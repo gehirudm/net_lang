@@ -190,6 +190,245 @@ precedence, AST structure, malformed syntax, numeric overflow, request
 configuration, match patterns, the success-criteria program, tree output, and CLI
 diagnostics. Implementation milestones are recorded as separate local commits.
 
-The v0.1 scope excludes runtime execution, actual HTTP/concurrency, type checking,
-imports, interpolation, and compiled backends. An interpreter can be the next
-stage once the frontend design is settled.
+## Roadmap and progress tracking
+
+The checked items below are implemented in the current frontend. Unchecked items
+are planned or under consideration and are not part of v0.1 unless moved into an
+active milestone. This section should be updated whenever a feature is completed,
+its syntax changes, or its priority is revised.
+
+### Current frontend
+
+- [x] Reentrant Flex lexer with a stable C bridge and safe Rust wrapper
+- [x] Handwritten recursive-descent parser and Rust AST
+- [x] Variables, assignment, functions, calls, returns, and control flow
+- [x] Arrays, objects, property access, and indexing
+- [x] HTTP request expressions for `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD`
+- [x] Duration literals normalized to milliseconds
+- [x] `parallel` statements represented in the AST
+- [x] Basic `match` statements with literal and wildcard patterns
+- [x] Token and AST CLI commands
+- [x] Source-line diagnostics and readable AST output
+
+### Language syntax
+
+- [ ] **Static type annotations**
+
+  ```netlang
+  let port: int = 8080;
+
+  fn fetch_user(id: int) -> Response {
+      ...
+  }
+  ```
+
+- [ ] **User-defined types and structs**
+
+  ```netlang
+  type User {
+      id: int,
+      name: string,
+      active: bool
+  }
+  ```
+
+- [ ] **Typed request responses**
+
+  ```netlang
+  let user: Response<User> = GET "/users/1";
+  ```
+
+- [ ] **String interpolation**
+
+  ```netlang
+  let response = GET "/users/${id}";
+  ```
+
+  String concatenation is currently required:
+
+  ```netlang
+  GET "/users/" + id;
+  ```
+
+- [ ] **Imports and modules**
+
+  ```netlang
+  import net.http;
+  import "./utils.net";
+  ```
+
+- [ ] **Constants**
+
+  ```netlang
+  const API_URL = "https://api.example.com";
+  ```
+
+- [ ] **`break` and `continue`**
+
+  ```netlang
+  for item in items {
+      if item == target {
+          break;
+      }
+  }
+  ```
+
+- [ ] **Richer match patterns**, including ranges and eventually destructuring
+
+  ```netlang
+  match response.status {
+      200..299 => { ... }
+      404      => { ... }
+      _        => { ... }
+  }
+  ```
+
+- [ ] **First-class error handling**
+
+  The syntax is not finalized. One possible form is:
+
+  ```netlang
+  try {
+      ...
+  } catch error {
+      ...
+  }
+  ```
+
+  A result-oriented model is also under consideration.
+
+- [ ] **Additional concurrency syntax**, potentially including `spawn`, `await`,
+  or a Net-lang-specific synchronization model
+
+  ```netlang
+  spawn {
+      ...
+  }
+  ```
+
+### Network-specific syntax
+
+- [ ] **TCP connections**
+
+  ```netlang
+  let connection = TCP "example.com:9000";
+  ```
+
+- [ ] **UDP communication**
+
+  ```netlang
+  let socket = UDP "10.0.0.1:5000";
+  ```
+
+- [ ] **WebSocket connections**
+
+  ```netlang
+  let socket = WS "wss://example.com/events";
+  ```
+
+- [ ] **Streaming syntax**
+
+  ```netlang
+  for message in WS "wss://example.com/events" {
+      print(message);
+  }
+  ```
+
+- [ ] **Reusable network policies** for timeout, retry, rate-limit, and
+  connection behavior
+
+  ```netlang
+  policy external_api {
+      timeout: 5s,
+      retry: 3
+  }
+  ```
+
+- [ ] **Native server and route declarations**
+
+  ```netlang
+  server 8080 {
+      GET "/users/:id" {
+          ...
+      }
+
+      POST "/users" {
+          ...
+      }
+  }
+  ```
+
+- [ ] **Protocol definitions and protocol state machines**
+
+  ```netlang
+  protocol Login {
+      state Connected {
+          SEND Credentials -> Waiting
+      }
+
+      state Waiting {
+          RECEIVE Success -> Authenticated
+          RECEIVE Failure -> Connected
+      }
+  }
+  ```
+
+- [ ] **Binary packet and protocol structures**
+
+  ```netlang
+  packet Header {
+      version: u8,
+      length: u16be
+  }
+  ```
+
+- [ ] **Request pipelines and network data pipelines**
+
+  ```netlang
+  GET "/events"
+      |> decode json
+      |> process;
+  ```
+
+### Possible general language features
+
+These are lower priority and should be added only when they serve networking
+programs:
+
+- [ ] Enums
+- [ ] Generics
+- [ ] Tuples
+- [ ] Closures and anonymous functions
+- [ ] Optional values
+- [ ] Standard collection types such as maps and sets
+- [ ] Visibility with `pub` and private declarations
+- [ ] Package and module namespaces
+- [ ] Macros
+
+Classes and inheritance are intentionally not a current priority. Net-lang does
+not aim to reproduce every feature of a general-purpose object-oriented language.
+
+### Compiler and runtime work
+
+These are not syntax features, but are required for Net-lang to become executable:
+
+- [ ] Semantic analysis
+- [ ] Symbol tables and scope checking
+- [ ] Static type checking
+- [ ] Interpreter
+- [ ] Actual HTTP execution
+- [ ] Retry and timeout runtime behavior
+- [ ] Real parallel execution
+- [ ] TCP runtime
+- [ ] UDP runtime
+- [ ] WebSocket runtime
+- [ ] Standard library
+- [ ] Module loader
+- [ ] Improved source spans and diagnostics
+- [ ] Intermediate representation (IR)
+- [ ] Compiled backend
+- [ ] Package manager
+
+The v0.1 scope excludes runtime execution, actual HTTP and concurrency, type
+checking, imports, interpolation, and compiled backends. An interpreter is the
+intended first execution backend once the frontend design is stable.
