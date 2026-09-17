@@ -1,0 +1,64 @@
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expr {
+    Integer(i64),
+    Float(f64),
+    String(String),
+    Boolean(bool),
+    Null,
+    /// Duration normalized to milliseconds.
+    Duration(u64),
+    Identifier(String),
+    Array(Vec<Expr>),
+    Object(Vec<ObjectField>),
+    Unary {
+        operator: UnaryOp,
+        expression: Box<Expr>,
+    },
+    Binary {
+        left: Box<Expr>,
+        operator: BinaryOp,
+        right: Box<Expr>,
+    },
+    Assignment {
+        target: Box<Expr>,
+        value: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        arguments: Vec<Expr>,
+    },
+    Property {
+        object: Box<Expr>,
+        name: String,
+    },
+    Index {
+        object: Box<Expr>,
+        index: Box<Expr>,
+    },
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectField {
+    pub key: String,
+    pub value: Expr,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Not,
+    Negate,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Equal,
+    NotEqual,
+    And,
+    Or,
+}
