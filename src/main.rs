@@ -37,7 +37,7 @@ fn run(args: Vec<std::ffi::OsString>) -> Result<String, String> {
         let program = Parser::new(tokens)
             .and_then(|mut parser| parser.parse_program())
             .map_err(|e| diagnostic::render(&filename, &source, e.line, e.column, &e.message))?;
-        Ok(format!("{program:#?}\n"))
+        Ok(program.pretty())
     }
 }
 fn main() -> ExitCode {
