@@ -5,8 +5,9 @@ communication. It tokenizes source with a reentrant Flex scanner compiled as C,
 then uses a handwritten Rust recursive-descent parser to construct a Rust AST.
 An initial semantic-analysis pass checks lexical scopes and function usage.
 
-HTTP requests, parallel iteration, and match statements are syntax and AST nodes.
-This version does not execute programs or make network requests.
+A tree-walking interpreter now executes the core language. HTTP requests and
+parallel iteration are represented in the AST; their standard runtime support
+is still being developed.
 
 ## Build and use
 
@@ -25,6 +26,7 @@ cargo build
 cargo run -- tokens examples/complete.net
 cargo run -- ast examples/complete.net
 cargo run -- check examples/complete.net
+cargo run -- run examples/hello.net
 ```
 
 The binary is also available directly:
@@ -33,6 +35,7 @@ The binary is also available directly:
 ./target/debug/netlang tokens examples/request.net
 ./target/debug/netlang ast examples/complete.net
 ./target/debug/netlang check examples/complete.net
+./target/debug/netlang run examples/hello.net
 ```
 
 To install the binary on your Cargo executable path:
@@ -180,6 +183,49 @@ until AST nodes carry source spans. `examples/match.net` is a syntax fragment
 using an undeclared `response`; it parses but intentionally fails semantic
 checking. The complete example declares that binding and passes.
 
+## Interpreter
+
+`netlang run file.net` performs semantic checks before executing top-level
+statements, then invokes a top-level `fn main()` if one exists. `main` must have
+no parameters. Scripts without `main` execute just their top-level statements.
+An explicit call to `main` in top-level code is an ordinary call and does not
+suppress the automatic entry-point call. Return values do not set process exit
+codes; runtime errors cause a failure exit.
+
+The interpreter supports literals, arithmetic, short-circuit logical operators,
+mutable bindings, arrays/objects, functions, lexical captures, recursion,
+conditionals, while/for loops, match, and return. `print` writes its arguments
+separated by spaces followed by a newline. Output already written is retained
+when a later runtime error occurs.
+
+Current runtime decisions:
+
+- Conditions and logical operators require booleans; there is no implicit
+  truthiness. Integer division truncates toward zero. Arithmetic overflow,
+  division by zero, and non-finite float results are errors. Mixed integer/float
+  arithmetic requires the integer to be exactly representable as a float.
+- String concatenation accepts scalar values, including integers and durations.
+  Duration addition/subtraction is checked and results remain in milliseconds.
+- Arrays and objects copy by value, including arguments and return values.
+  Mutation must be rooted in a mutable variable. Object assignment may add a
+  field; array assignment requires an existing nonnegative integer index.
+- Functions capture lexical binding identities, so later shadowing does not
+  change earlier captures. A forward call that reaches a binding before its
+  initializer executes is a runtime error. Calls through function-valued
+  variables also check argument counts at runtime.
+- Match uses the first matching literal or wildcard arm; no matching arm does
+  nothing. A function that finishes without returning a value returns `null`.
+- Each run defaults to one million evaluation steps, 128 active function calls,
+  and 256 nested expressions. Embedders can set `interpreter::Limits` through
+  `execute_with_limits`. These are execution limits, not a security sandbox.
+
+The runtime interface separates printing and HTTP effects from AST evaluation.
+Embedders can provide a custom `runtime::Runtime`; the initial standard runtime
+supports printing. Runtime errors include function call stacks; exact source
+locations still require spanned AST nodes. Binding/function arenas are released
+after each run but retain expired scopes during a run; memory reclamation for
+long-running programs remains future work.
+
 ## Architecture
 
 ```text
@@ -196,6 +242,8 @@ source → Flex scanner (C) → C bridge → safe Rust Lexer → Rust Parser →
 - `src/parser/`: expression precedence, statements, and located errors.
 - `src/ast/`: lexer-independent AST types and tree formatting.
 - `src/semantic/`: lexical symbol tables, name resolution, and semantic errors.
+- `src/interpreter/`: checked AST execution, lexical environments, and call stacks.
+- `src/runtime/`: runtime values and host-effect interfaces.
 - `src/diagnostic.rs`: shared source-line and caret rendering.
 - `src/main.rs`: file loading and command dispatch.
 
@@ -245,6 +293,8 @@ precedence, AST structure, malformed syntax, numeric overflow, request
 configuration, match patterns, the success-criteria program, tree output, CLI
 diagnostics, lexical scopes, recursion, argument counts, and invalid returns.
 Implementation milestones are recorded as separate local commits.
+Local milestone notes live in `devlogs/`, which is ignored by Git. Each note
+describes behavior, design decisions, tradeoffs, verification, and remaining work.
 
 ## Roadmap and progress tracking
 
@@ -267,6 +317,7 @@ its syntax changes, or its priority is revised.
 - [x] Source-line diagnostics and readable AST output
 - [x] Initial semantic analysis with lexical symbol tables and scope checking
 - [x] `check` CLI command with collected semantic diagnostics
+- [x] Core tree-walking interpreter and `run` CLI command
 
 ### Language syntax
 
@@ -553,9 +604,10 @@ not aim to reproduce every feature of a general-purpose object-oriented language
 
 ### Planned compiler architecture and implementation stages
 
-Net-lang will be built in stages. The frontend and initial semantic analysis are
-implemented today; the interpreter, IR, native backend, and cross-platform
-toolchain described below remain future work.
+Net-lang will be built in stages. The frontend, initial semantic analysis, and
+core interpreter are implemented. Interpreter networking/concurrency, IR, the
+native backend, and the cross-platform toolchain remain under development or
+future work.
 
 #### Phase 1 — Compiler frontend
 
@@ -704,7 +756,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Static type checking
 - [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
-- [ ] Interpreter
+- [x] Core interpreter: values, functions, lexical scopes, control flow, and collections
+- [ ] Interpreter networking and concurrency integration
 - [ ] Actual HTTP execution
 - [ ] Retry and timeout runtime behavior
 - [ ] Real parallel execution
@@ -727,6 +780,6 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Compiled backend
 - [ ] Package manager
 
-The v0.1 scope excludes runtime execution, actual HTTP and concurrency, type
-checking, imports, interpolation, and compiled backends. An interpreter is the
-intended first execution backend once the frontend design is stable.
+The original v0.1 milestone covered the frontend. Development has now entered the
+interpreter phase. Static typing, imports, interpolation, IR, and compiled
+backends remain later work.

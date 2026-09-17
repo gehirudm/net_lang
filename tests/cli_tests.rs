@@ -26,7 +26,7 @@ fn usage_and_missing_files() {
     assert!(cli(&["--help"]).status.success());
     for args in [
         &[][..],
-        &["run", "examples/hello.net"],
+        &["build", "examples/hello.net"],
         &["ast"],
         &["ast", "does-not-exist.net"],
         &["ast", "examples/hello.net", "extra"],
@@ -126,4 +126,20 @@ fn check_preserves_lexer_parser_and_file_errors() {
     std::fs::remove_file(&path).unwrap();
     assert!(!cli(&["check", path.to_str().unwrap()]).status.success());
     assert!(!cli(&["check"]).status.success());
+}
+
+#[test]
+fn run_executes_main_and_preserves_output_before_runtime_errors() {
+    let output = cli(&["run", "examples/hello.net"]);
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"Hello, Bob\n");
+    let path = std::env::temp_dir().join(format!("netlang-run-{}.net", std::process::id()));
+    std::fs::write(&path, "fn main() { print(42); 1 / 0; }").unwrap();
+    let output = cli(&["run", path.to_str().unwrap()]);
+    assert!(!output.status.success());
+    assert_eq!(output.stdout, b"42\n");
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("division by zero"));
+    assert!(error.contains("in function 'main'"));
+    std::fs::remove_file(path).unwrap();
 }
