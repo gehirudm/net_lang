@@ -3,3 +3,7 @@ name = "netlang"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
+
+[dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "json", "query"] }
+serde_json = "1"

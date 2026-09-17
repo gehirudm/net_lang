@@ -1,4 +1,5 @@
 //! Host effects used by the interpreter and, later, compiled programs.
+mod http;
 mod value;
 use crate::ast::HttpMethod;
 use std::io::Write;
@@ -20,16 +21,24 @@ pub trait Runtime {
 
 pub struct StandardRuntime<W: Write> {
     output: W,
+    http: http::HttpRuntime,
 }
 
 impl<W: Write> StandardRuntime<W> {
     pub fn new(output: W) -> Self {
-        Self { output }
+        Self {
+            output,
+            http: http::HttpRuntime::default(),
+        }
     }
 }
 
 impl<W: Write> Runtime for StandardRuntime<W> {
     fn print(&mut self, text: &str) -> Result<(), String> {
         writeln!(self.output, "{text}").map_err(|error| format!("cannot write output: {error}"))
+    }
+
+    fn request(&mut self, method: HttpMethod, url: &str, config: &Value) -> Result<Value, String> {
+        self.http.request(method, url, config)
     }
 }

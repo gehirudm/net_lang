@@ -5,9 +5,9 @@ communication. It tokenizes source with a reentrant Flex scanner compiled as C,
 then uses a handwritten Rust recursive-descent parser to construct a Rust AST.
 An initial semantic-analysis pass checks lexical scopes and function usage.
 
-A tree-walking interpreter now executes the core language. HTTP requests and
-parallel iteration are represented in the AST; their standard runtime support
-is still being developed.
+A tree-walking interpreter executes the core language and HTTP(S) requests.
+Parallel iteration is represented in the AST; its execution model is still
+under development.
 
 ## Build and use
 
@@ -17,9 +17,10 @@ Prerequisites:
 - Flex available as `flex`.
 - A C99 compiler available as `cc`, and an archiver available as `ar`.
 
-The native build uses these system tools directly and has no Cargo dependencies.
-It has been verified on macOS with Apple's Flex and Clang. Cross-compilation and
-Windows toolchains are not configured.
+The lexer build uses these system tools directly. Cargo also builds the HTTP
+runtime's `reqwest`/Rustls and `serde_json` dependencies; the TLS dependency may
+require CMake. The build has been verified on macOS with Apple's Flex and Clang.
+Cross-compilation and Windows toolchains are not configured.
 
 ```sh
 cargo build
@@ -105,8 +106,8 @@ arguments, and parameters accept an optional trailing comma.
 
 Identifiers follow `[a-zA-Z_][a-zA-Z0-9_]*`. Object keys are identifiers or
 strings; quote a keyword when using it as a key. `timeout`, `retry`, `headers`,
-`query`, and `json` remain ordinary identifiers. Request options are not
-semantically validated.
+`query`, and `json` remain ordinary identifiers. Request options are validated
+when a request executes, rather than during parsing or semantic checking.
 
 Strings support `\n`, `\t`, `\r`, `\"`, and `\\`. Raw newlines are
 not allowed inside strings. Strings may contain UTF-8 text. Interpolation is not
@@ -220,11 +221,46 @@ Current runtime decisions:
   `execute_with_limits`. These are execution limits, not a security sandbox.
 
 The runtime interface separates printing and HTTP effects from AST evaluation.
-Embedders can provide a custom `runtime::Runtime`; the initial standard runtime
-supports printing. Runtime errors include function call stacks; exact source
+Embedders can provide a custom `runtime::Runtime`; the standard runtime supports
+printing and HTTP(S). Runtime errors include function call stacks; exact source
 locations still require spanned AST nodes. Binding/function arenas are released
 after each run but retain expired scopes during a run; memory reclamation for
 long-running programs remains future work.
+
+### HTTP runtime
+
+`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD` execute through a reusable
+blocking HTTP client. Absolute `http://` or `https://` URLs are required. HTTPS
+uses Rustls with certificate verification enabled. Interpreter code only calls
+the runtime interface; HTTP implementation details stay in `src/runtime/http.rs`.
+
+Supported request options:
+
+- `headers`: an object with string header values.
+- `query`: an object whose values are strings, numbers, or booleans. Values are
+  URL-encoded and appended to any existing query parameters.
+- `json`: JSON-compatible literals, arrays, and objects. Functions and durations
+  are rejected. The runtime serializes the value and sets the JSON content type.
+- `timeout`: a positive duration up to 24 hours, defaulting to 30 seconds per
+  attempt. The timeout covers connecting and reading the response body.
+- `retry`: zero to ten additional attempts, defaulting to zero. Connection errors,
+  timeouts before response headers, and statuses 429/502/503/504 can trigger a
+  retry. Body-read errors are reported immediately. Retries currently have no
+  backoff; explicitly retrying a write request can repeat its remote side effects.
+
+Unknown options or invalid option types are runtime errors. Automatic redirects,
+implicit client retries, and system proxies are disabled, so redirect responses
+and the configured attempt count remain visible to the program.
+
+A response is an object with `status` (integer), `body` (UTF-8 string), and
+`headers` (an object keyed by lowercase header names). Repeated header values
+become arrays of strings. Bodies are limited to 8 MiB; binary body support is
+future work. HTTP error statuses are ordinary responses, including the final
+response after exhausted retries. Transport failures are runtime errors.
+
+HTTP integration tests use local loopback servers; they make no public-network
+requests. TLS is supplied by the verified client configuration, but a local
+certificate-based HTTPS integration fixture remains future test work.
 
 ## Architecture
 
@@ -605,9 +641,9 @@ not aim to reproduce every feature of a general-purpose object-oriented language
 ### Planned compiler architecture and implementation stages
 
 Net-lang will be built in stages. The frontend, initial semantic analysis, and
-core interpreter are implemented. Interpreter networking/concurrency, IR, the
-native backend, and the cross-platform toolchain remain under development or
-future work.
+core interpreter with HTTP execution are implemented. Further transports,
+concurrency, IR, the native backend, and the cross-platform toolchain remain
+under development or future work.
 
 #### Phase 1 — Compiler frontend
 
@@ -640,11 +676,11 @@ Tree-Walking Interpreter
 Net-lang Runtime
 ```
 
-The interpreter will be built before native code generation so that language
+The interpreter is being built before native code generation so that language
 semantics, the networking model, error handling, concurrency behavior, and
 runtime APIs can be tested before the compiler commits to a native backend. It
-should eventually execute variables and expressions, functions, control flow,
-HTTP requests, TCP, UDP, `SEND` / `RECEIVE`, and concurrency primitives.
+already executes variables and expressions, functions, control flow, and HTTP
+requests. TCP, UDP, `SEND` / `RECEIVE`, and concurrency primitives remain planned.
 
 #### Phase 3 — Intermediate Representation
 
@@ -758,8 +794,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [x] Core interpreter: values, functions, lexical scopes, control flow, and collections
 - [ ] Interpreter networking and concurrency integration
-- [ ] Actual HTTP execution
-- [ ] Retry and timeout runtime behavior
+- [x] Actual HTTP(S) execution through the runtime interface
+- [x] HTTP retry and timeout runtime behavior
 - [ ] Real parallel execution
 - [ ] Transport-specific runtime implementation
 - [ ] TCP runtime
