@@ -211,6 +211,19 @@ impl Analyzer {
 
     fn expression(&mut self, expr: &Expr) {
         match expr {
+            Expr::Connection { address, .. } => self.expression(address),
+            Expr::Send {
+                connection,
+                data,
+                destination,
+            } => {
+                self.expression(connection);
+                self.expression(data);
+                if let Some(destination) = destination {
+                    self.expression(destination);
+                }
+            }
+            Expr::Receive { connection } => self.expression(connection),
             Expr::Integer(_)
             | Expr::Float(_)
             | Expr::String(_)

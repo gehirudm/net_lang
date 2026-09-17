@@ -1,7 +1,7 @@
 //! Host effects used by the interpreter and, later, compiled programs.
 mod http;
 mod value;
-use crate::ast::HttpMethod;
+use crate::ast::{HttpMethod, Transport};
 use std::io::Write;
 pub use value::{FunctionId, Value};
 
@@ -13,6 +13,28 @@ pub trait Runtime {
     /// is buffered by the interpreter and replayed through the parent's print.
     fn fork(&mut self) -> Result<Box<dyn Runtime + Send>, String> {
         Err("parallel execution requires a runtime that supports worker forks".into())
+    }
+
+    fn connect(
+        &mut self,
+        _transport: Transport,
+        _address: &str,
+        _protocol: Option<&str>,
+    ) -> Result<Value, String> {
+        Err("TCP/UDP connections are not supported by this runtime".into())
+    }
+
+    fn send(
+        &mut self,
+        _connection: &Value,
+        _data: &Value,
+        _destination: Option<&str>,
+    ) -> Result<Value, String> {
+        Err("SEND is not supported by this runtime".into())
+    }
+
+    fn receive(&mut self, _connection: &Value) -> Result<Value, String> {
+        Err("RECEIVE is not supported by this runtime".into())
     }
 
     fn request(

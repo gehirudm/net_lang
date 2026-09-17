@@ -1,6 +1,6 @@
 use super::{Binding, Environment, Flow, Function, Interpreter, Limits, Result, RuntimeError};
 use crate::{
-    ast::{Expr, HttpMethod, Stmt},
+    ast::{Expr, HttpMethod, Stmt, Transport},
     runtime::{Runtime, Value},
 };
 use std::{
@@ -49,6 +49,28 @@ impl Runtime for WorkerRuntime {
 
     fn fork(&mut self) -> std::result::Result<Box<dyn Runtime + Send>, String> {
         self.host.fork()
+    }
+
+    fn connect(
+        &mut self,
+        transport: Transport,
+        address: &str,
+        protocol: Option<&str>,
+    ) -> std::result::Result<Value, String> {
+        self.host.connect(transport, address, protocol)
+    }
+
+    fn send(
+        &mut self,
+        connection: &Value,
+        data: &Value,
+        destination: Option<&str>,
+    ) -> std::result::Result<Value, String> {
+        self.host.send(connection, data, destination)
+    }
+
+    fn receive(&mut self, connection: &Value) -> std::result::Result<Value, String> {
+        self.host.receive(connection)
     }
 }
 

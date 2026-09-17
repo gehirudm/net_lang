@@ -23,6 +23,43 @@ impl<R: Runtime> Interpreter<'_, R> {
 
     fn expression_inner(&mut self, expr: &Expr, env: &Environment) -> Result<Value> {
         Ok(match expr {
+            Expr::Connection {
+                transport,
+                address,
+                protocol,
+            } => {
+                let address = self.expression(address, env)?;
+                let Value::String(address) = address else {
+                    return Err(self.error("connection address must be a string"));
+                };
+                self.runtime
+                    .connect(*transport, &address, protocol.as_deref())
+                    .map_err(|message| self.error(message))?
+            }
+            Expr::Send {
+                connection,
+                data,
+                destination,
+            } => {
+                let connection = self.expression(connection, env)?;
+                let data = self.expression(data, env)?;
+                let destination = match destination {
+                    Some(expr) => match self.expression(expr, env)? {
+                        Value::String(value) => Some(value),
+                        _ => return Err(self.error("SEND destination must be a string")),
+                    },
+                    None => None,
+                };
+                self.runtime
+                    .send(&connection, &data, destination.as_deref())
+                    .map_err(|message| self.error(message))?
+            }
+            Expr::Receive { connection } => {
+                let connection = self.expression(connection, env)?;
+                self.runtime
+                    .receive(&connection)
+                    .map_err(|message| self.error(message))?
+            }
             Expr::Integer(v) => Value::Integer(*v),
             Expr::Float(v) => Value::Float(*v),
             Expr::String(v) => Value::String(v.clone()),

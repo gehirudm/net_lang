@@ -115,7 +115,7 @@ performed; use `"/users/" + id`.
 
 Precedence from tightest to loosest is grouping, postfix operations, unary
 operators, multiplication/division/remainder, addition/subtraction, comparisons,
-equality, `&&`, `||`, assignment. Binary operators associate left; assignment
+equality, `&&`, `||`, `SEND`, assignment. Binary operators associate left; assignment
 associates right. Assignment targets must be identifiers, properties, or indexes.
 
 ### Request expression boundaries
@@ -308,6 +308,32 @@ response after exhausted retries. Transport failures are runtime errors.
 HTTP integration tests use local loopback servers; they make no public-network
 requests. TLS is supplied by the verified client configuration, but a local
 certificate-based HTTPS integration fixture remains future test work.
+
+## Transport frontend
+
+The frontend parses TCP/UDP connection expressions, optional `using Protocol`
+metadata, and untyped communication operators:
+
+```netlang
+let conn = TCP "example.com:9000" using Login;
+conn SEND "hello";
+let response = conn RECEIVE;
+
+let socket = UDP "192.168.1.20:5000";
+socket SEND response TO "192.168.1.20:5001";
+```
+
+`RECEIVE` is a postfix operator. `SEND` binds below logical OR and above
+assignment; nested sends require parentheses. Connection addresses accept
+expressions; use `(TCP address) RECEIVE` when receiving directly from a new
+connection. `TO` remains provisional syntax.
+
+The AST, semantic operand traversal, and interpreter host interfaces are
+implemented and tested with injected runtimes. The standard runtime reports
+these operations as unsupported: actual TCP/UDP sockets, byte representation,
+and receive framing are not implemented. Address and destination values must
+be strings. Protocol names are metadata only; protocol resolution, transport
+capability checks, typed packets, and typed receives remain future work.
 
 ## Architecture
 
@@ -728,8 +754,9 @@ The interpreter is being built before native code generation so that language
 semantics, the networking model, error handling, concurrency behavior, and
 runtime APIs can be tested before the compiler commits to a native backend. It
 already executes variables and expressions, functions, control flow, HTTP
-requests, and isolated parallel iteration. TCP, UDP, `SEND` / `RECEIVE`, and
-additional concurrency primitives remain planned.
+requests, and isolated parallel iteration. TCP, UDP, and `SEND` / `RECEIVE`
+have frontend and interpreter host-interface support; their standard runtime
+execution and additional concurrency primitives remain planned.
 
 #### Phase 3 — Intermediate Representation
 
@@ -833,9 +860,10 @@ Cross-Platform Native Compilation
 These are not syntax features, but are required for Net-lang to become executable:
 
 - [x] Lexer tokens for `TCP`, `UDP`, `SEND`, `RECEIVE`, `TO`, and `USING` (`using` in source)
-- [ ] Parser support for TCP and UDP connection expressions
-- [ ] Parser support for `SEND` and `RECEIVE` expressions
-- [ ] AST nodes for TCP and UDP connections and `SEND` / `RECEIVE`
+- [x] Parser support for TCP and UDP connection expressions
+- [x] Parser support for untyped `SEND` and `RECEIVE` expressions
+- [x] AST nodes for TCP and UDP connections and `SEND` / `RECEIVE`
+- [x] Interpreter transport host interfaces, verified with injected test runtimes
 - [x] Initial semantic analysis: names, declarations, assignments, returns, and direct-call arity
 - [x] Symbol tables and lexical scope checking
 - [ ] Static type checking

@@ -127,6 +127,36 @@ fn statement(stmt: &Stmt) -> Tree {
 }
 fn expression(expr: &Expr) -> Tree {
     match expr {
+        Expr::Connection {
+            transport,
+            address,
+            protocol,
+        } => {
+            let transport = match transport {
+                Transport::Tcp => "TCP",
+                Transport::Udp => "UDP",
+            };
+            let mut children = vec![Tree::new("Address", vec![expression(address)])];
+            if let Some(protocol) = protocol {
+                children.push(Tree::leaf(format!("Protocol {protocol}")));
+            }
+            Tree::new(format!("Connection {transport}"), children)
+        }
+        Expr::Send {
+            connection,
+            data,
+            destination,
+        } => {
+            let mut children = vec![
+                Tree::new("Connection", vec![expression(connection)]),
+                Tree::new("Data", vec![expression(data)]),
+            ];
+            if let Some(destination) = destination {
+                children.push(Tree::new("Destination", vec![expression(destination)]));
+            }
+            Tree::new("Send", children)
+        }
+        Expr::Receive { connection } => Tree::new("Receive", vec![expression(connection)]),
         Expr::Integer(value) => Tree::leaf(format!("Integer {value}")),
         Expr::Float(value) => Tree::leaf(format!("Float {value}")),
         Expr::String(value) => Tree::leaf(format!("String {value:?}")),

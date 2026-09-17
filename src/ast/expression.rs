@@ -1,5 +1,18 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    Connection {
+        transport: Transport,
+        address: Box<Expr>,
+        protocol: Option<String>,
+    },
+    Send {
+        connection: Box<Expr>,
+        data: Box<Expr>,
+        destination: Option<Box<Expr>>,
+    },
+    Receive {
+        connection: Box<Expr>,
+    },
     Request {
         method: HttpMethod,
         url: Box<Expr>,
@@ -76,4 +89,10 @@ pub enum HttpMethod {
     Patch,
     Delete,
     Head,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    Tcp,
+    Udp,
 }

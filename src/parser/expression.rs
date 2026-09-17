@@ -1,6 +1,6 @@
 use super::{ParseError, Parser};
 use crate::{
-    ast::{BinaryOp, Expr, HttpMethod, ObjectField, UnaryOp},
+    ast::{BinaryOp, Expr, HttpMethod, ObjectField, Transport, UnaryOp},
     lexer::{Token, TokenKind as K},
 };
 
@@ -16,7 +16,7 @@ impl Parser {
         Ok(expr)
     }
     fn parse_assignment(&mut self) -> Result<Expr, ParseError> {
-        let target = self.parse_or()?;
+        let target = self.parse_send()?;
         if self.matches(K::Equal) {
             if !matches!(
                 target,
@@ -33,6 +33,29 @@ impl Parser {
             Ok(target)
         }
     }
+    // SEND binds more tightly than assignment but less tightly than logical OR.
+    // Chained sends must be parenthesized rather than guessing their grouping.
+    fn parse_send(&mut self) -> Result<Expr, ParseError> {
+        let connection = self.parse_or()?;
+        if !self.matches(K::Send) {
+            return Ok(connection);
+        }
+        let data = self.parse_or()?;
+        let destination = if self.matches(K::To) {
+            Some(Box::new(self.parse_or()?))
+        } else {
+            None
+        };
+        if self.check(K::Send) {
+            return Err(self.error("parenthesize nested SEND expressions"));
+        }
+        Ok(Expr::Send {
+            connection: Box::new(connection),
+            data: Box::new(data),
+            destination,
+        })
+    }
+
     // Each level delegates operands to the next tighter precedence level.
     fn parse_binary(
         &mut self,
@@ -124,6 +147,10 @@ impl Parser {
                     object: Box::new(expr),
                     index: Box::new(index),
                 };
+            } else if self.matches(K::Receive) {
+                expr = Expr::Receive {
+                    connection: Box::new(expr),
+                };
             } else if self.matches(K::Dot) {
                 let name = self
                     .consume(K::Identifier, "expected property name after '.'")?
@@ -153,6 +180,7 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         let token = self.advance();
         match token.kind {
+            K::Tcp | K::Udp => self.parse_connection_expression(token.kind),
             K::Get | K::Post | K::Put | K::Patch | K::Delete | K::Head => {
                 self.parse_request_expression(token.kind)
             }
@@ -199,6 +227,28 @@ impl Parser {
             _ => Err(Self::error_at(&token, "expected expression")),
         }
     }
+    fn parse_connection_expression(&mut self, kind: K) -> Result<Expr, ParseError> {
+        let transport = if kind == K::Tcp {
+            Transport::Tcp
+        } else {
+            Transport::Udp
+        };
+        let address = Box::new(self.parse_or()?);
+        let protocol = if self.matches(K::Using) {
+            Some(
+                self.consume(K::Identifier, "expected protocol name after 'using'")?
+                    .lexeme,
+            )
+        } else {
+            None
+        };
+        Ok(Expr::Connection {
+            transport,
+            address,
+            protocol,
+        })
+    }
+
     fn parse_request_expression(&mut self, kind: K) -> Result<Expr, ParseError> {
         let method = match kind {
             K::Get => HttpMethod::Get,
