@@ -52,6 +52,12 @@ pub enum TokenKind {
     Semicolon = 48,
     Dot = 49,
     FatArrow = 50,
+    Tcp = 51,
+    Udp = 52,
+    Send = 53,
+    Receive = 54,
+    To = 55,
+    Using = 56,
 }
 impl TokenKind {
     pub(crate) fn from_raw(raw: i32) -> Option<Self> {
@@ -107,6 +113,12 @@ impl TokenKind {
             48 => Some(Self::Semicolon),
             49 => Some(Self::Dot),
             50 => Some(Self::FatArrow),
+            51 => Some(Self::Tcp),
+            52 => Some(Self::Udp),
+            53 => Some(Self::Send),
+            54 => Some(Self::Receive),
+            55 => Some(Self::To),
+            56 => Some(Self::Using),
             _ => None,
         }
     }
@@ -174,6 +186,12 @@ impl TokenKind {
             Self::Semicolon => "SEMICOLON",
             Self::Dot => "DOT",
             Self::FatArrow => "FAT_ARROW",
+            Self::Tcp => "TCP",
+            Self::Udp => "UDP",
+            Self::Send => "SEND",
+            Self::Receive => "RECEIVE",
+            Self::To => "TO",
+            Self::Using => "USING",
         }
     }
 }

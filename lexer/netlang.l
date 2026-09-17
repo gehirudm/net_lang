@@ -40,6 +40,12 @@
 "PATCH" return NET_PATCH;
 "DELETE" return NET_DELETE;
 "HEAD" return NET_HEAD;
+"TCP" return NET_TCP;
+"UDP" return NET_UDP;
+"SEND" return NET_SEND;
+"RECEIVE" return NET_RECEIVE;
+"TO" return NET_TO;
+"using" return NET_USING;
 "+" return NET_PLUS;
 "-" return NET_MINUS;
 "*" return NET_STAR;

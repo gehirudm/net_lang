@@ -118,3 +118,16 @@ fn scanners_are_independent_and_eof_is_stable() {
     assert_eq!(a.next_token().unwrap().line, 2);
     assert_eq!(b.next_token().unwrap(), b.next_token().unwrap());
 }
+
+#[test]
+fn transport_keywords_are_case_sensitive_and_respect_identifier_boundaries() {
+    let tokens = Lexer::new("TCP UDP SEND RECEIVE TO using\ntcp udp send receive to USING TCPstream SENDER RECEIVE_more using_protocol")
+        .unwrap().tokenize().unwrap();
+    assert_eq!(
+        tokens[..6].iter().map(|t| t.kind).collect::<Vec<_>>(),
+        vec![Tcp, Udp, Send, Receive, To, Using]
+    );
+    assert!(tokens[6..16].iter().all(|t| t.kind == Identifier));
+    assert_eq!(tokens[16].kind, Eof);
+    assert_eq!((tokens[6].line, tokens[6].column), (2, 1));
+}

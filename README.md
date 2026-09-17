@@ -832,7 +832,7 @@ Cross-Platform Native Compilation
 
 These are not syntax features, but are required for Net-lang to become executable:
 
-- [ ] Lexer tokens for `TCP`, `UDP`, `SEND`, `RECEIVE`, `TO`, and `USING`
+- [x] Lexer tokens for `TCP`, `UDP`, `SEND`, `RECEIVE`, `TO`, and `USING` (`using` in source)
 - [ ] Parser support for TCP and UDP connection expressions
 - [ ] Parser support for `SEND` and `RECEIVE` expressions
 - [ ] AST nodes for TCP and UDP connections and `SEND` / `RECEIVE`
