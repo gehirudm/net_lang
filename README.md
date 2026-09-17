@@ -551,12 +551,107 @@ programs:
 Classes and inheritance are intentionally not a current priority. Net-lang does
 not aim to reproduce every feature of a general-purpose object-oriented language.
 
-### Long-term goal: Go-style cross-compilation
+### Planned compiler architecture and implementation stages
 
-One of Net-lang's endgame goals is a single compiler and toolchain that can build
-Net-lang programs for supported operating systems and architectures without
-requiring the build to run on the target operating system. The intended user
-experience is similar to Go-style cross-compilation:
+Net-lang will be built in stages. The frontend and initial semantic analysis are
+implemented today; the interpreter, IR, native backend, and cross-platform
+toolchain described below remain future work.
+
+#### Phase 1 — Compiler frontend
+
+```text
+Source
+  ↓
+Flex Lexer
+  ↓
+Tokens
+  ↓
+Rust Recursive-Descent Parser
+  ↓
+AST
+  ↓
+Semantic Analysis
+```
+
+This phase establishes the language syntax, AST, lexical scopes, and early
+semantic rules. It is the implemented foundation for later execution stages.
+
+#### Phase 2 — Interpreter
+
+```text
+AST
+  ↓
+Semantic Analysis
+  ↓
+Tree-Walking Interpreter
+  ↓
+Net-lang Runtime
+```
+
+The interpreter will be built before native code generation so that language
+semantics, the networking model, error handling, concurrency behavior, and
+runtime APIs can be tested before the compiler commits to a native backend. It
+should eventually execute variables and expressions, functions, control flow,
+HTTP requests, TCP, UDP, `SEND` / `RECEIVE`, and concurrency primitives.
+
+#### Phase 3 — Intermediate Representation
+
+After the interpreter and language semantics are stable, Net-lang will introduce
+a language-specific IR:
+
+```text
+Source
+  ↓
+Lexer
+  ↓
+Parser
+  ↓
+AST
+  ↓
+Semantic Analysis
+  ↓
+Net-lang IR
+```
+
+The IR should remain independent of the eventual machine-code backend so the
+frontend is not tied to LLVM.
+
+#### Phase 4 — Native compilation
+
+The current intended native compilation direction is:
+
+```text
+Net-lang IR
+    ↓
+LLVM IR
+    ↓
+LLVM native code generation
+    ↓
+Target object code
+    +
+Net-lang target runtime
+    ↓
+Linker
+    ↓
+Native executable
+```
+
+LLVM is the current preferred long-term backend direction, but this decision is
+not locked in and will be reevaluated after the interpreter and Net-lang IR
+exist. Cranelift or another native backend remain alternatives rather than the
+current primary plan.
+
+The runtime should be portable and target-aware. OS-specific networking and
+system behavior should stay behind the runtime rather than being emitted
+throughout generated code. HTTP, TCP, UDP, `SEND`, and `RECEIVE` should
+eventually lower to runtime operations conceptually such as `net_http_get`,
+`net_tcp_connect`, `net_udp_bind`, `net_send`, and `net_receive`. Runtime
+implementations may be written in Rust and built for each supported target.
+
+#### Phase 5 — Cross-platform compilation
+
+The endgame toolchain should support Go-style cross-compilation for supported
+targets, subject to platform and toolchain constraints:
 
 ```sh
 netlang build app.net --target windows-x64
@@ -565,58 +660,36 @@ netlang build app.net --target linux-arm64
 netlang build app.net --target macos-arm64
 ```
 
-These friendly Net-lang target names may internally map to platform target
-triples used by the selected backend, linker, and runtime build.
+Friendly Net-lang target names may map internally to platform target triples.
+The compiler should eventually lower Net-lang IR to target-specific LLVM IR and
+object code, select or build the Net-lang runtime for the requested target, link
+the program and runtime, and produce a standalone native executable where
+practical. The toolchain may ship prebuilt target-specific runtimes so users do
+not need to build them themselves. The build itself should not need to run on
+the target OS.
 
-The intended compilation model is:
-
-```text
-Net-lang source
-    ↓
-Frontend
-    ↓
-Semantic analysis
-    ↓
-Net-lang IR
-    ↓
-Native backend
-    ↓
-Target object code
-    +
-Net-lang runtime compiled for the target
-    ↓
-Linker
-    ↓
-Standalone native executable
-```
-
-The runtime should be portable and target-aware. OS-specific networking and
-system behavior should be hidden behind the runtime instead of being emitted
-throughout generated code. Networking primitives such as HTTP, TCP, UDP, `SEND`,
-and `RECEIVE` should eventually lower to runtime operations conceptually like:
-
-```text
-net_http_get
-net_tcp_connect
-net_udp_bind
-net_send
-net_receive
-```
-
-Runtime implementations may be written in Rust and cross-compiled for each
-supported target. The toolchain may ship prebuilt target-specific runtimes so
-users do not need to build the runtime themselves. Produced binaries should aim
-to be standalone and easy to distribute where practical.
-
-Cross-compilation should begin with a deliberately small set of supported
-platforms rather than attempting every operating system and architecture at
-once. The proposed target tiers are:
+Cross-compilation should begin with a deliberately small set of platforms:
 
 - **Tier 1:** `windows-x64`, `linux-x64`, `macos-arm64`
 - **Possible Tier 2:** `windows-arm64`, `linux-arm64`, `macos-x64`
 
-The exact native backend is not finalized. LLVM, Cranelift, or another backend
-may be chosen after the interpreter and Net-lang IR exist.
+The implementation path is:
+
+```text
+Frontend
+    ↓
+Semantic Analyzer
+    ↓
+Interpreter
+    ↓
+Stabilize Language Semantics
+    ↓
+Net-lang IR
+    ↓
+LLVM Backend
+    ↓
+Cross-Platform Native Compilation
+```
 
 ### Compiler and runtime work
 
