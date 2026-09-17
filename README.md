@@ -493,6 +493,73 @@ programs:
 Classes and inheritance are intentionally not a current priority. Net-lang does
 not aim to reproduce every feature of a general-purpose object-oriented language.
 
+### Long-term goal: Go-style cross-compilation
+
+One of Net-lang's endgame goals is a single compiler and toolchain that can build
+Net-lang programs for supported operating systems and architectures without
+requiring the build to run on the target operating system. The intended user
+experience is similar to Go-style cross-compilation:
+
+```sh
+netlang build app.net --target windows-x64
+netlang build app.net --target linux-x64
+netlang build app.net --target linux-arm64
+netlang build app.net --target macos-arm64
+```
+
+These friendly Net-lang target names may internally map to platform target
+triples used by the selected backend, linker, and runtime build.
+
+The intended compilation model is:
+
+```text
+Net-lang source
+    ↓
+Frontend
+    ↓
+Semantic analysis
+    ↓
+Net-lang IR
+    ↓
+Native backend
+    ↓
+Target object code
+    +
+Net-lang runtime compiled for the target
+    ↓
+Linker
+    ↓
+Standalone native executable
+```
+
+The runtime should be portable and target-aware. OS-specific networking and
+system behavior should be hidden behind the runtime instead of being emitted
+throughout generated code. Networking primitives such as HTTP, TCP, UDP, `SEND`,
+and `RECEIVE` should eventually lower to runtime operations conceptually like:
+
+```text
+net_http_get
+net_tcp_connect
+net_udp_bind
+net_send
+net_receive
+```
+
+Runtime implementations may be written in Rust and cross-compiled for each
+supported target. The toolchain may ship prebuilt target-specific runtimes so
+users do not need to build the runtime themselves. Produced binaries should aim
+to be standalone and easy to distribute where practical.
+
+Cross-compilation should begin with a deliberately small set of supported
+platforms rather than attempting every operating system and architecture at
+once. The proposed target tiers are:
+
+- **Tier 1:** `windows-x64`, `linux-x64`, `macos-arm64`
+- **Possible Tier 2:** `windows-arm64`, `linux-arm64`, `macos-x64`
+
+The exact native backend is not finalized. LLVM, Cranelift, or another backend
+may be chosen after the interpreter and Net-lang IR exist.
+
 ### Compiler and runtime work
 
 These are not syntax features, but are required for Net-lang to become executable:
@@ -517,7 +584,15 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Standard library
 - [ ] Module loader
 - [ ] Improved source spans and diagnostics
-- [ ] Intermediate representation (IR)
+- [ ] Net-lang intermediate representation (IR)
+- [ ] Backend abstraction
+- [ ] Native code generation backend
+- [ ] Target triple and target configuration support
+- [ ] Target-specific Net-lang runtime builds
+- [ ] Cross-platform linking
+- [ ] Cross-compilation CLI support
+- [ ] Standalone executable packaging
+- [ ] Tier 1 target support
 - [ ] Compiled backend
 - [ ] Package manager
 
