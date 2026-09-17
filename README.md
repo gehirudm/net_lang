@@ -308,17 +308,86 @@ its syntax changes, or its priority is revised.
 
 ### Network-specific syntax
 
+- [ ] **First-class `SEND` and `RECEIVE` operators**
+
+  `SEND` and `RECEIVE` are Net-lang language constructs rather than ordinary
+  library methods. They are intended to work across suitable transports,
+  including TCP connections, WebSockets, connected UDP sockets, and custom
+  protocol connections, depending on the target's type. Conventional method
+  forms such as `conn.send(data)` and `conn.receive()` are not planned.
+
+  ```netlang
+  conn SEND data;
+  let data = conn RECEIVE;
+  ```
+
+  An unconnected transport can include a destination:
+
+  ```netlang
+  socket SEND packet TO address;
+  ```
+
+  Structured and typed data should use the same operators:
+
+  ```netlang
+  conn SEND LoginPacket {
+      username: "alice",
+      token: token
+  };
+
+  let response = conn RECEIVE LoginResponse;
+  ```
+
+  Semantic analysis will verify whether the target transport or type supports
+  `SEND`, `RECEIVE`, or both.
+
 - [ ] **TCP connections**
 
   ```netlang
-  let connection = TCP "example.com:9000";
+  let conn = TCP "example.com:9000";
+
+  conn SEND "hello";
+
+  let response = conn RECEIVE;
   ```
+
+  A future protocol-aware form is:
+
+  ```netlang
+  let conn = TCP "example.com:9000" using MyProtocol;
+
+  conn SEND Credentials {
+      username: "alice",
+      password: password
+  };
+
+  let result = conn RECEIVE;
+  ```
+
+  TCP server and listening syntax is **TBD**. No final syntax has been selected.
 
 - [ ] **UDP communication**
 
+  A connected UDP socket can use the standard `SEND` and `RECEIVE` operators:
+
   ```netlang
-  let socket = UDP "10.0.0.1:5000";
+  let socket = UDP "192.168.1.20:5000";
+
+  socket SEND data;
+
+  let packet = socket RECEIVE;
   ```
+
+  For an unconnected UDP socket, the currently proposed syntax supplies a
+  destination with `TO`:
+
+  ```netlang
+  socket SEND data TO "192.168.1.20:5000";
+
+  let packet = socket RECEIVE;
+  ```
+
+  `TO` is proposed syntax and may change.
 
 - [ ] **WebSocket connections**
 
@@ -360,6 +429,9 @@ its syntax changes, or its priority is revised.
 
 - [ ] **Protocol definitions and protocol state machines**
 
+  Protocol declarations may describe state transitions with the same `SEND` and
+  `RECEIVE` language operators:
+
   ```netlang
   protocol Login {
       state Connected {
@@ -371,6 +443,19 @@ its syntax changes, or its priority is revised.
           RECEIVE Failure -> Connected
       }
   }
+  ```
+
+  Normal Net-lang code using that protocol should conceptually look like:
+
+  ```netlang
+  let conn = TCP "server.example.com:9000" using Login;
+
+  conn SEND Credentials {
+      username: "alice",
+      password: password
+  };
+
+  let result = conn RECEIVE;
   ```
 
 - [ ] **Binary packet and protocol structures**
@@ -412,13 +497,20 @@ not aim to reproduce every feature of a general-purpose object-oriented language
 
 These are not syntax features, but are required for Net-lang to become executable:
 
+- [ ] Lexer tokens for `TCP`, `UDP`, `SEND`, `RECEIVE`, `TO`, and `USING`
+- [ ] Parser support for TCP and UDP connection expressions
+- [ ] Parser support for `SEND` and `RECEIVE` expressions
+- [ ] AST nodes for TCP and UDP connections and `SEND` / `RECEIVE`
 - [ ] Semantic analysis
 - [ ] Symbol tables and scope checking
 - [ ] Static type checking
+- [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
+- [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [ ] Interpreter
 - [ ] Actual HTTP execution
 - [ ] Retry and timeout runtime behavior
 - [ ] Real parallel execution
+- [ ] Transport-specific runtime implementation
 - [ ] TCP runtime
 - [ ] UDP runtime
 - [ ] WebSocket runtime
