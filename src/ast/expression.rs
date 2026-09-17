@@ -1,5 +1,10 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    Request {
+        method: HttpMethod,
+        url: Box<Expr>,
+        config: Option<Box<Expr>>,
+    },
     Integer(i64),
     Float(f64),
     String(String),
@@ -61,4 +66,14 @@ pub enum BinaryOp {
     NotEqual,
     And,
     Or,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
 }

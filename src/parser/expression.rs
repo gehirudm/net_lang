@@ -1,6 +1,6 @@
 use super::{ParseError, Parser};
 use crate::{
-    ast::{BinaryOp, Expr, ObjectField, UnaryOp},
+    ast::{BinaryOp, Expr, HttpMethod, ObjectField, UnaryOp},
     lexer::{Token, TokenKind as K},
 };
 
@@ -153,6 +153,9 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         let token = self.advance();
         match token.kind {
+            K::Get | K::Post | K::Put | K::Patch | K::Delete | K::Head => {
+                self.parse_request_expression(token.kind)
+            }
             K::Integer => Ok(Expr::Integer(Self::integer(&token)?)),
             K::Float => {
                 let value: f64 = token
@@ -195,6 +198,30 @@ impl Parser {
             K::LeftBrace => self.parse_object(),
             _ => Err(Self::error_at(&token, "expected expression")),
         }
+    }
+    fn parse_request_expression(&mut self, kind: K) -> Result<Expr, ParseError> {
+        let method = match kind {
+            K::Get => HttpMethod::Get,
+            K::Post => HttpMethod::Post,
+            K::Put => HttpMethod::Put,
+            K::Patch => HttpMethod::Patch,
+            K::Delete => HttpMethod::Delete,
+            K::Head => HttpMethod::Head,
+            _ => unreachable!("request parser is called only for HTTP method tokens"),
+        };
+        // A URL consumes a full expression. The following object, if any,
+        // belongs to this request. Parenthesize a request to operate on its result.
+        let url = Box::new(self.parse_expression()?);
+        let config = if self.matches(K::LeftBrace) {
+            Some(Box::new(self.parse_object()?))
+        } else {
+            None
+        };
+        Ok(Expr::Request {
+            method,
+            url,
+            config,
+        })
     }
     // Called after the opening brace has been consumed.
     fn parse_object(&mut self) -> Result<Expr, ParseError> {
