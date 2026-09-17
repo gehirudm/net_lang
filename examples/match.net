@@ -1,0 +1,14 @@
+match response.status {
+    200 => {
+        print("Success");
+    }
+    404 => {
+        print("Not found");
+    }
+    500 => {
+        print("Server error");
+    }
+    _ => {
+        print("Unexpected response");
+    }
+}

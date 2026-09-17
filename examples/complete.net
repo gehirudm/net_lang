@@ -1,0 +1,30 @@
+fn main() {
+    let urls = [
+        "https://api1.example.com",
+        "https://api2.example.com"
+    ];
+
+    parallel url in urls {
+        let response = GET url {
+            headers: {
+                "Accept": "application/json"
+            },
+            timeout: 5s,
+            retry: 3
+        };
+
+        match response.status {
+            200 => {
+                print(response.body);
+            }
+
+            404 => {
+                print("Not found");
+            }
+
+            _ => {
+                print("Request failed");
+            }
+        }
+    }
+}

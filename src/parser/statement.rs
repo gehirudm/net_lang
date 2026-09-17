@@ -1,6 +1,6 @@
 use super::{ParseError, Parser};
 use crate::{
-    ast::{Program, Stmt},
+    ast::{MatchArm, Pattern, Program, Stmt},
     lexer::TokenKind as K,
 };
 
@@ -61,17 +61,28 @@ impl Parser {
             let condition = self.parse_expression()?;
             let body = Box::new(self.parse_block()?);
             Ok(Stmt::While { condition, body })
-        } else if self.matches(K::For) {
+        } else if self.matches(K::Match) {
+            self.parse_match()
+        } else if self.matches(K::For) || self.matches(K::Parallel) {
+            let parallel = self.previous().kind == K::Parallel;
             let variable = self
                 .consume(K::Identifier, "expected loop variable")?
                 .lexeme;
             self.consume(K::In, "expected 'in' after loop variable")?;
             let iterable = self.parse_expression()?;
             let body = Box::new(self.parse_block()?);
-            Ok(Stmt::For {
-                variable,
-                iterable,
-                body,
+            Ok(if parallel {
+                Stmt::Parallel {
+                    variable,
+                    iterable,
+                    body,
+                }
+            } else {
+                Stmt::For {
+                    variable,
+                    iterable,
+                    body,
+                }
             })
         } else if self.matches(K::Return) {
             let value = if self.check(K::Semicolon) {
@@ -86,6 +97,30 @@ impl Parser {
             self.consume(K::Semicolon, "expected ';' after expression")?;
             Ok(Stmt::Expression(expression))
         }
+    }
+    fn parse_match(&mut self) -> Result<Stmt, ParseError> {
+        let expression = self.parse_expression()?;
+        self.consume(K::LeftBrace, "expected '{' before match arms")?;
+        let mut arms = Vec::new();
+        while !self.check(K::RightBrace) && !self.is_at_end() {
+            let token = self.advance();
+            let pattern = match token.kind {
+                K::Integer => Pattern::Integer(Self::integer(&token)?),
+                K::String => Pattern::String(Self::decode_string(&token)?),
+                K::True => Pattern::Boolean(true),
+                K::False => Pattern::Boolean(false),
+                K::Null => Pattern::Null,
+                K::Identifier if token.lexeme == "_" => Pattern::Wildcard,
+                _ => return Err(Self::error_at(&token, "expected literal pattern or '_'")),
+            };
+            self.consume(K::FatArrow, "expected '=>' after match pattern")?;
+            arms.push(MatchArm {
+                pattern,
+                body: self.parse_block()?,
+            });
+        }
+        self.consume(K::RightBrace, "expected '}' after match arms")?;
+        Ok(Stmt::Match { expression, arms })
     }
     fn parse_block(&mut self) -> Result<Stmt, ParseError> {
         self.consume(K::LeftBrace, "expected '{' before block")?;

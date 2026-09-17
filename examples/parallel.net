@@ -1,0 +1,13 @@
+fn fetch_all() {
+    let urls = [
+        "https://a.example.com",
+        "https://b.example.com",
+        "https://c.example.com"
+    ];
+    parallel url in urls {
+        let response = GET url {
+            timeout: 5s
+        };
+        print(response.status);
+    }
+}

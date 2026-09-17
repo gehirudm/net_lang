@@ -1,0 +1,9 @@
+// Functions, mutable variables, and ordinary calls.
+fn greet(name) {
+    print("Hello, " + name);
+}
+fn main() {
+    let name = "Alice";
+    name = "Bob";
+    greet(name);
+}

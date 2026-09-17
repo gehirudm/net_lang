@@ -1,0 +1,26 @@
+fn main() {
+    let api = "https://api.example.com";
+    let response = GET api + "/users/42" {
+        headers: {
+            "Authorization": "Bearer abc123"
+        },
+        timeout: 5s,
+        retry: 3
+    };
+    if response.status == 200 {
+        print(response.body);
+    } else {
+        print("Request failed");
+    }
+}
+fn create_user() {
+    let response = POST "https://api.example.com/users" {
+        json: {
+            name: "Alice",
+            age: 24,
+            active: true
+        },
+        timeout: 3s
+    };
+    return response;
+}
