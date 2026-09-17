@@ -38,10 +38,60 @@ fn literals_comments_and_positions() {
 #[test]
 fn keywords_and_operators() {
     let tokens = Lexer::new("let fn return if else while for in match parallel true false null GET POST PUT PATCH DELETE HEAD + - * / % = == ! != < <= > >= && || ( ) { } [ ] , : ; . => _ getter GETfoo").unwrap().tokenize().unwrap();
-    assert_eq!(tokens.len(), 49);
-    assert_eq!(tokens[18].kind, Head);
-    assert_eq!(tokens[44].kind, FatArrow);
-    assert!(tokens[45..48].iter().all(|t| t.kind == Identifier));
+    assert_eq!(
+        tokens.iter().map(|t| t.kind).collect::<Vec<_>>(),
+        vec![
+            Let,
+            Fn,
+            Return,
+            If,
+            Else,
+            While,
+            For,
+            In,
+            Match,
+            Parallel,
+            True,
+            False,
+            Null,
+            Get,
+            Post,
+            Put,
+            Patch,
+            Delete,
+            Head,
+            Plus,
+            Minus,
+            Star,
+            Slash,
+            Percent,
+            Equal,
+            EqualEqual,
+            Bang,
+            BangEqual,
+            Less,
+            LessEqual,
+            Greater,
+            GreaterEqual,
+            AndAnd,
+            OrOr,
+            LeftParen,
+            RightParen,
+            LeftBrace,
+            RightBrace,
+            LeftBracket,
+            RightBracket,
+            Comma,
+            Colon,
+            Semicolon,
+            Dot,
+            FatArrow,
+            Identifier,
+            Identifier,
+            Identifier,
+            Eof,
+        ]
+    );
 }
 #[test]
 fn errors_are_located_and_terminal() {

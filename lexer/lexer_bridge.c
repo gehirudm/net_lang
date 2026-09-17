@@ -11,7 +11,7 @@ char *yyget_text(yyscan_t);
 int yyget_leng(yyscan_t);
 typedef struct { yyscan_t scanner; NetPosition position; } NetLexer;
 void *netlang_lexer_create(const char *source, size_t length) {
-    if (length > INT_MAX) return NULL;
+    if (length > INT_MAX - 2) return NULL;
     NetLexer *lexer = calloc(1, sizeof(*lexer));
     if (!lexer) return NULL;
     lexer->position.line = lexer->position.column = 1;

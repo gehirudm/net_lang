@@ -6,6 +6,9 @@ fn run(command: &mut Command) {
     assert!(status.success(), "build tool failed: {command:?}");
 }
 fn main() {
+    for name in ["FLEX", "CC", "AR"] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
     for file in [
         "lexer/netlang.l",
         "lexer/lexer_bridge.c",
@@ -14,7 +17,7 @@ fn main() {
         println!("cargo:rerun-if-changed={file}");
     }
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    run(Command::new("flex")
+    run(Command::new(env::var("FLEX").unwrap_or("flex".into()))
         .arg("-o")
         .arg(out.join("lex.yy.c"))
         .arg("lexer/netlang.l"));
