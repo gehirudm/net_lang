@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, io::Read, time::Duration};
 
 const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct HttpRuntime {
     client: Option<Client>,
 }

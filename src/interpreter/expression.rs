@@ -109,6 +109,9 @@ impl<R: Runtime> Interpreter<'_, R> {
                 if !self.bindings[id].mutable {
                     return Err(self.error("cannot assign to a function binding"));
                 }
+                if id < self.captured_bindings {
+                    return Err(self.error("cannot assign to a read-only parallel capture"));
+                }
                 let value = self.expression(value, env)?;
                 if selectors.is_empty() {
                     self.bindings[id].value = Some(value.clone());

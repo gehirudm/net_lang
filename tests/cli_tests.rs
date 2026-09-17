@@ -143,3 +143,14 @@ fn run_executes_main_and_preserves_output_before_runtime_errors() {
     assert!(error.contains("in function 'main'"));
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn run_executes_parallel_iterations_in_input_output_order() {
+    let output = cli(&["run", "examples/parallel_compute.net"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout, b"1 1\n2 4\n3 9\n4 16\ndone\n");
+}

@@ -1,0 +1,12 @@
+fn square(n) {
+    return n * n;
+}
+
+fn main() {
+    let values = [1, 2, 3, 4];
+    parallel value in values {
+        let result = square(value);
+        print(value, result);
+    }
+    print("done");
+}

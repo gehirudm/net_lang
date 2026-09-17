@@ -144,6 +144,7 @@ fn execution_limits_produce_errors() {
             steps: 1000,
             call_depth: 8,
             expression_depth: 3,
+            ..Limits::default()
         };
         let error = execute_with_limits(
             &parse(source),

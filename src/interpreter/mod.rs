@@ -3,13 +3,20 @@
 mod error;
 mod expression;
 mod operations;
+mod parallel;
 use crate::{
     ast::{Pattern, Program, Stmt},
     runtime::{FunctionId, Runtime, Value},
     semantic,
 };
 pub use error::{ExecutionError, RuntimeError};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 type Environment = Vec<HashMap<String, usize>>;
 type Result<T> = std::result::Result<T, RuntimeError>;
@@ -19,6 +26,11 @@ pub struct Limits {
     pub steps: usize,
     pub call_depth: usize,
     pub expression_depth: usize,
+    /// Maximum concurrent workers, from 1 through 64. Nested parallel blocks
+    /// run in their current worker while keeping fresh isolation boundaries.
+    pub parallel_workers: usize,
+    /// Maximum buffered print bytes (including newlines) per iteration.
+    pub parallel_output_bytes: usize,
 }
 impl Default for Limits {
     fn default() -> Self {
@@ -26,6 +38,8 @@ impl Default for Limits {
             steps: 1_000_000,
             call_depth: 128,
             expression_depth: 256,
+            parallel_workers: 4,
+            parallel_output_bytes: 1024 * 1024,
         }
     }
 }
@@ -45,6 +59,12 @@ pub fn execute_with_limits(
     limits: Limits,
 ) -> std::result::Result<Value, ExecutionError> {
     semantic::analyze(program).map_err(ExecutionError::Semantic)?;
+    if !(1..=64).contains(&limits.parallel_workers) {
+        return Err(ExecutionError::Runtime(RuntimeError {
+            message: "parallel worker limit must be between 1 and 64".into(),
+            call_stack: Vec::new(),
+        }));
+    }
     let mut interpreter = Interpreter {
         runtime,
         bindings: vec![Binding {
@@ -53,9 +73,11 @@ pub fn execute_with_limits(
         }],
         functions: Vec::new(),
         limits,
-        steps: 0,
+        remaining_steps: Arc::new(AtomicUsize::new(limits.steps)),
         expression_depth: 0,
         call_stack: Vec::new(),
+        captured_bindings: 0,
+        in_parallel_worker: false,
     };
     let mut env = vec![HashMap::from([("print".into(), 0)]), HashMap::new()];
     let result = (|| {
@@ -79,6 +101,7 @@ pub fn execute_with_limits(
     result.map_err(ExecutionError::Runtime)
 }
 
+#[derive(Clone)]
 struct Binding {
     value: Option<Value>,
     mutable: bool,
@@ -100,9 +123,12 @@ struct Interpreter<'a, R: Runtime> {
     bindings: Vec<Binding>,
     functions: Vec<Function>,
     limits: Limits,
-    steps: usize,
+    remaining_steps: Arc<AtomicUsize>,
     expression_depth: usize,
     call_stack: Vec<String>,
+    // In a worker all arena slots preceding this boundary are read-only.
+    captured_bindings: usize,
+    in_parallel_worker: bool,
 }
 
 impl<R: Runtime> Interpreter<'_, R> {
@@ -113,10 +139,15 @@ impl<R: Runtime> Interpreter<'_, R> {
         }
     }
     fn tick(&mut self) -> Result<()> {
-        if self.steps >= self.limits.steps {
+        if self
+            .remaining_steps
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
+                remaining.checked_sub(1)
+            })
+            .is_err()
+        {
             return Err(self.error("execution step limit exceeded"));
         }
-        self.steps += 1;
         Ok(())
     }
     fn allocate(&mut self, value: Option<Value>, mutable: bool) -> usize {
@@ -287,8 +318,12 @@ impl<R: Runtime> Interpreter<'_, R> {
                     }
                 }
             }
-            Stmt::Parallel { .. } => {
-                return Err(self.error("parallel execution is not implemented yet"));
+            Stmt::Parallel {
+                variable,
+                iterable,
+                body,
+            } => {
+                self.parallel(variable, iterable, body, env)?;
             }
         }
         Ok(Flow::Continue)

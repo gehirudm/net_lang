@@ -9,6 +9,12 @@ pub use value::{FunctionId, Value};
 pub trait Runtime {
     fn print(&mut self, text: &str) -> Result<(), String>;
 
+    /// Make an independent host for a parallel iteration. Worker print output
+    /// is buffered by the interpreter and replayed through the parent's print.
+    fn fork(&mut self) -> Result<Box<dyn Runtime + Send>, String> {
+        Err("parallel execution requires a runtime that supports worker forks".into())
+    }
+
     fn request(
         &mut self,
         _method: HttpMethod,
@@ -40,5 +46,12 @@ impl<W: Write> Runtime for StandardRuntime<W> {
 
     fn request(&mut self, method: HttpMethod, url: &str, config: &Value) -> Result<Value, String> {
         self.http.request(method, url, config)
+    }
+
+    fn fork(&mut self) -> Result<Box<dyn Runtime + Send>, String> {
+        Ok(Box::new(StandardRuntime {
+            output: Vec::<u8>::new(),
+            http: self.http.clone(),
+        }))
     }
 }

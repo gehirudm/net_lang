@@ -353,3 +353,59 @@ fn redirects_are_returned_and_exhausted_retries_preserve_the_last_response() {
     );
     assert_eq!(handle.join().unwrap().len(), 2);
 }
+
+#[test]
+fn complete_program_runs_over_concurrent_local_http_requests() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut pending = Vec::new();
+        // Neither request receives a response until both have arrived. A serial
+        // interpreter cannot pass this fixture, regardless of machine speed.
+        while pending.len() < 2 {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let request = read_request(&mut stream);
+                    pending.push((stream, request));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        Instant::now() < deadline,
+                        "parallel requests did not overlap"
+                    );
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+        for (mut stream, request) in pending.into_iter().rev() {
+            assert!(request.to_lowercase().contains("accept: application/json"));
+            let (status, body) = if request.starts_with("GET /1 ") {
+                (200, "first body")
+            } else {
+                assert!(request.starts_with("GET /2 "));
+                (404, "missing")
+            };
+            write!(
+                stream,
+                "HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        }
+    });
+    let source = include_str!("../examples/complete.net")
+        .replace("https://api1.example.com", &format!("http://{address}/1"))
+        .replace("https://api2.example.com", &format!("http://{address}/2"));
+    let program = Parser::new(Lexer::new(&source).unwrap().tokenize().unwrap())
+        .unwrap()
+        .parse_program()
+        .unwrap();
+    let mut output = Vec::new();
+    let result = execute(&program, &mut StandardRuntime::new(&mut output));
+    server.join().unwrap();
+    result.unwrap();
+    assert_eq!(output, b"first body\nNot found\n");
+}

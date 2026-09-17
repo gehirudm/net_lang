@@ -8,6 +8,8 @@ pub enum SemanticErrorKind {
     ImmutableAssignment,
     InvalidAssignmentTarget,
     ArgumentCount,
+    CapturedAssignment,
+    ReturnAcrossParallel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

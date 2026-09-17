@@ -16,6 +16,7 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
         function_depth: 0,
         context: vec!["program".into()],
         errors: Vec::new(),
+        parallel_boundaries: Vec::new(),
     };
     analyzer.scopes.enter();
     analyzer.statements(&program.statements);
@@ -32,6 +33,8 @@ struct Analyzer {
     function_depth: usize,
     context: Vec<String>,
     errors: Vec<SemanticError>,
+    // Scope depth and enclosing function depth at each worker boundary.
+    parallel_boundaries: Vec<(usize, usize)>,
 }
 
 impl Analyzer {
@@ -133,7 +136,14 @@ impl Analyzer {
                 self.context.pop();
             }
             Stmt::Return { value } => {
-                if self.function_depth == 0 {
+                if self
+                    .parallel_boundaries
+                    .last()
+                    .is_some_and(|(_, depth)| *depth == self.function_depth)
+                {
+                    self.error(SemanticErrorKind::ReturnAcrossParallel,
+                        "return cannot exit a parallel iteration; return from a called function instead");
+                } else if self.function_depth == 0 {
                     self.error(
                         SemanticErrorKind::ReturnOutsideFunction,
                         "return is only allowed inside a function",
@@ -176,10 +186,18 @@ impl Analyzer {
                     "parallel"
                 };
                 self.context.push(format!("{keyword} '{variable}'"));
+                let parallel = matches!(stmt, Stmt::Parallel { .. });
+                if parallel {
+                    self.parallel_boundaries
+                        .push((self.scopes.depth(), self.function_depth));
+                }
                 self.scopes.enter();
                 self.declare(variable, Symbol::LoopVariable);
                 self.body_in_current_scope(body);
                 self.scopes.leave();
+                if parallel {
+                    self.parallel_boundaries.pop();
+                }
                 self.context.pop();
             }
             Stmt::Match { expression, arms } => {
@@ -239,6 +257,7 @@ impl Analyzer {
                         self.expression(target);
                     }
                 }
+                self.check_parallel_assignment(target);
                 self.expression(value);
             }
             Expr::Call { callee, arguments } => {
@@ -270,6 +289,24 @@ impl Analyzer {
                     self.expression(config);
                 }
             }
+        }
+    }
+
+    fn check_parallel_assignment(&mut self, target: &Expr) {
+        let mut root = target;
+        while let Expr::Property { object, .. } | Expr::Index { object, .. } = root {
+            root = object;
+        }
+        if let Expr::Identifier(name) = root
+            && let Some((boundary, _)) = self.parallel_boundaries.last()
+            && let Some((depth, symbol)) = self.scopes.resolve_with_depth(name)
+            && depth < *boundary
+            && symbol.is_mutable()
+        {
+            self.error(
+                SemanticErrorKind::CapturedAssignment,
+                format!("cannot assign to read-only parallel capture '{name}'"),
+            );
         }
     }
 }

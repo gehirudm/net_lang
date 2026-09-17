@@ -48,10 +48,18 @@ impl Scopes {
     }
 
     pub fn resolve(&self, name: &str) -> Option<Symbol> {
+        self.resolve_with_depth(name).map(|(_, symbol)| symbol)
+    }
+
+    pub fn depth(&self) -> usize {
+        self.stack.len()
+    }
+
+    pub fn resolve_with_depth(&self, name: &str) -> Option<(usize, Symbol)> {
         self.stack
             .iter()
+            .enumerate()
             .rev()
-            .find_map(|scope| scope.get(name))
-            .copied()
+            .find_map(|(depth, scope)| scope.get(name).map(|symbol| (depth, *symbol)))
     }
 }

@@ -5,9 +5,8 @@ communication. It tokenizes source with a reentrant Flex scanner compiled as C,
 then uses a handwritten Rust recursive-descent parser to construct a Rust AST.
 An initial semantic-analysis pass checks lexical scopes and function usage.
 
-A tree-walking interpreter executes the core language and HTTP(S) requests.
-Parallel iteration is represented in the AST; its execution model is still
-under development.
+A tree-walking interpreter executes the core language, HTTP(S) requests, and
+bounded parallel iteration with isolated workers.
 
 ## Build and use
 
@@ -28,6 +27,7 @@ cargo run -- tokens examples/complete.net
 cargo run -- ast examples/complete.net
 cargo run -- check examples/complete.net
 cargo run -- run examples/hello.net
+cargo run -- run examples/parallel_compute.net
 ```
 
 The binary is also available directly:
@@ -171,6 +171,11 @@ The first pass implements these rules:
   The built-in `print` is recognized, with no argument-count restriction in this
   initial pass. Signatures of dynamic callees, including variables holding
   functions, are not inferred yet.
+- Direct assignment to a captured outer variable inside `parallel` is rejected,
+  including assignments through a captured object's properties or array indexes.
+  Indirect writes through inherited functions are caught by the runtime.
+- A `return` cannot cross a parallel worker boundary. Functions called or declared
+  inside a worker may return normally.
 
 Request URLs, request option values, object values, and all other expression
 positions are traversed. Property names and object keys are not variable uses.
@@ -195,7 +200,7 @@ codes; runtime errors cause a failure exit.
 
 The interpreter supports literals, arithmetic, short-circuit logical operators,
 mutable bindings, arrays/objects, functions, lexical captures, recursion,
-conditionals, while/for loops, match, and return. `print` writes its arguments
+conditionals, while/for loops, parallel iteration, match, and return. `print` writes its arguments
 separated by spaces followed by a newline. Output already written is retained
 when a later runtime error occurs.
 
@@ -218,7 +223,8 @@ Current runtime decisions:
   nothing. A function that finishes without returning a value returns `null`.
 - Each run defaults to one million evaluation steps, 128 active function calls,
   and 256 nested expressions. Embedders can set `interpreter::Limits` through
-  `execute_with_limits`. These are execution limits, not a security sandbox.
+  `execute_with_limits`. The step budget is shared across the parent and all
+  workers. These are execution limits, not a security sandbox.
 
 The runtime interface separates printing and HTTP effects from AST evaluation.
 Embedders can provide a custom `runtime::Runtime`; the standard runtime supports
@@ -226,6 +232,47 @@ printing and HTTP(S). Runtime errors include function call stacks; exact source
 locations still require spanned AST nodes. Binding/function arenas are released
 after each run but retain expired scopes during a run; memory reclamation for
 long-running programs remains future work.
+
+### Parallel execution
+
+`parallel item in collection { ... }` evaluates an array once and executes its
+iterations in isolated workers. The statement joins all started workers before
+the parent continues. Captured outer bindings are read-only snapshots, including
+when accessed through inherited functions. Loop variables and worker-local
+bindings remain mutable; copying a captured array/object into a local variable
+allows modifying the local copy.
+
+```netlang
+let settings = { multiplier: 2 };
+parallel n in [1, 2, 3] {
+    let result = n * settings.multiplier;
+    print(result);
+}
+```
+
+There are four concurrent interpreter workers by default, configurable from 1
+through 64 using `Limits::parallel_workers`. Work runs in bounded batches.
+Nested parallel blocks preserve fresh isolation boundaries but run their
+iterations sequentially within the existing worker, preventing thread growth
+and nested pool deadlocks. HTTP calls within separate workers can overlap.
+
+Each iteration buffers print output, limited to 1 MiB by default through
+`Limits::parallel_output_bytes`. After a batch joins, output is replayed in input
+order, including output produced before a worker error. Network effects are real
+and are neither ordered nor rolled back. If workers fail, the first error in
+input order is reported after the current batch joins; later batches are not
+started. Running requests are not cancelled and may finish or time out first.
+Worker panics become runtime errors; buffered output from a panicked worker is
+not recoverable.
+
+Custom runtimes implement `Runtime::fork` to supply a `Send`-capable host for each
+iteration. Host requests run in workers, while buffered printing is delivered
+through the parent host. The standard runtime supports forks; a custom runtime
+without this capability reports an explicit error for nonempty parallel blocks.
+
+See [parallel_compute.net](examples/parallel_compute.net) for an offline example.
+An integration test also executes the full success-criteria example against two
+local HTTP endpoints that require concurrent requests before replying.
 
 ### HTTP runtime
 
@@ -354,6 +401,7 @@ its syntax changes, or its priority is revised.
 - [x] Initial semantic analysis with lexical symbol tables and scope checking
 - [x] `check` CLI command with collected semantic diagnostics
 - [x] Core tree-walking interpreter and `run` CLI command
+- [x] Bounded parallel execution with read-only captures and ordered print output
 
 ### Language syntax
 
@@ -641,9 +689,9 @@ not aim to reproduce every feature of a general-purpose object-oriented language
 ### Planned compiler architecture and implementation stages
 
 Net-lang will be built in stages. The frontend, initial semantic analysis, and
-core interpreter with HTTP execution are implemented. Further transports,
-concurrency, IR, the native backend, and the cross-platform toolchain remain
-under development or future work.
+core interpreter with HTTP and parallel execution are implemented. Further
+transports, additional concurrency primitives, IR, the native backend, and the
+cross-platform toolchain remain under development or future work.
 
 #### Phase 1 — Compiler frontend
 
@@ -679,8 +727,9 @@ Net-lang Runtime
 The interpreter is being built before native code generation so that language
 semantics, the networking model, error handling, concurrency behavior, and
 runtime APIs can be tested before the compiler commits to a native backend. It
-already executes variables and expressions, functions, control flow, and HTTP
-requests. TCP, UDP, `SEND` / `RECEIVE`, and concurrency primitives remain planned.
+already executes variables and expressions, functions, control flow, HTTP
+requests, and isolated parallel iteration. TCP, UDP, `SEND` / `RECEIVE`, and
+additional concurrency primitives remain planned.
 
 #### Phase 3 — Intermediate Representation
 
@@ -793,10 +842,11 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [x] Core interpreter: values, functions, lexical scopes, control flow, and collections
-- [ ] Interpreter networking and concurrency integration
+- [x] Interpreter HTTP and parallel integration
+- [ ] Interpreter integration for additional transports
 - [x] Actual HTTP(S) execution through the runtime interface
 - [x] HTTP retry and timeout runtime behavior
-- [ ] Real parallel execution
+- [x] Real parallel execution with bounded isolated workers
 - [ ] Transport-specific runtime implementation
 - [ ] TCP runtime
 - [ ] UDP runtime
