@@ -3,6 +3,7 @@
 Net-lang v0.1 is a compiler frontend for a small language built around network
 communication. It tokenizes source with a reentrant Flex scanner compiled as C,
 then uses a handwritten Rust recursive-descent parser to construct a Rust AST.
+An initial semantic-analysis pass checks lexical scopes and function usage.
 
 HTTP requests, parallel iteration, and match statements are syntax and AST nodes.
 This version does not execute programs or make network requests.
@@ -23,6 +24,7 @@ Windows toolchains are not configured.
 cargo build
 cargo run -- tokens examples/complete.net
 cargo run -- ast examples/complete.net
+cargo run -- check examples/complete.net
 ```
 
 The binary is also available directly:
@@ -30,6 +32,7 @@ The binary is also available directly:
 ```sh
 ./target/debug/netlang tokens examples/request.net
 ./target/debug/netlang ast examples/complete.net
+./target/debug/netlang check examples/complete.net
 ```
 
 To install the binary on your Cargo executable path:
@@ -136,10 +139,53 @@ request result; `GET url == other` places the comparison inside its URL AST.
 A leading brace in statement position is a block; an object expression statement
 can be parenthesized.
 
+## Semantic analysis
+
+`netlang check file.net` lexes, parses, and checks the program without executing
+it. It reports all errors found by the semantic pass and exits unsuccessfully
+when any check fails. The `tokens` and `ast` commands remain independently usable
+for inspecting syntax, including programs with semantic errors.
+
+The first pass implements these rules:
+
+- Names resolve from the innermost lexical scope outward. A `let` binding is
+  visible after its initializer; the initializer can use an outer binding with
+  the same name. Other uses before declaration are errors.
+- Functions are visible throughout their enclosing scope, supporting forward
+  calls and mutual recursion. A function body can reference enclosing variables
+  already declared when its declaration is analyzed. Capturing variables declared
+  later is not supported by this pass.
+- Duplicate declarations in the same scope are errors. Inner scopes may shadow
+  outer names. Function parameters share a scope with the function body's direct
+  declarations; loop variables share a scope with the loop body's declarations.
+- Blocks, branches, loop bodies, and match arms have local scopes. A loop variable
+  is available only in its body, not its iterable expression or after the loop.
+- Variables, parameters, and loop variables are mutable. Named function and
+  built-in bindings cannot be reassigned, though they may be shadowed.
+- `return` requires an enclosing function.
+- Calls to directly named user functions must supply the declared argument count.
+  The built-in `print` is recognized, with no argument-count restriction in this
+  initial pass. Signatures of dynamic callees, including variables holding
+  functions, are not inferred yet.
+
+Request URLs, request option values, object values, and all other expression
+positions are traversed. Property names and object keys are not variable uses.
+Request option validity, static types, callee types, match exhaustiveness, and
+runtime initialization order are not checked yet. A successful check therefore
+does not guarantee that a program will run successfully once execution exists.
+
+Semantic errors currently identify the filename and AST scope/statement context.
+Unlike lexer and parser errors, they cannot highlight an exact source location
+until AST nodes carry source spans. `examples/match.net` is a syntax fragment
+using an undeclared `response`; it parses but intentionally fails semantic
+checking. The complete example declares that binding and passes.
+
 ## Architecture
 
 ```text
 source → Flex scanner (C) → C bridge → safe Rust Lexer → Rust Parser → Rust AST
+                                                                        ↓
+                                                               Semantic analysis
 ```
 
 - `lexer/netlang.l`: token recognition and per-instance position tracking.
@@ -149,6 +195,7 @@ source → Flex scanner (C) → C bridge → safe Rust Lexer → Rust Parser →
 - `src/lexer/token.rs`: token kinds, lexemes, and source positions.
 - `src/parser/`: expression precedence, statements, and located errors.
 - `src/ast/`: lexer-independent AST types and tree formatting.
+- `src/semantic/`: lexical symbol tables, name resolution, and semantic errors.
 - `src/diagnostic.rs`: shared source-line and caret rendering.
 - `src/main.rs`: file loading and command dispatch.
 
@@ -159,10 +206,15 @@ outside `src/lexer/ffi.rs` calls C or contains unsafe code.
 Each stage can be used independently:
 
 ```rust
-use netlang::{lexer::Lexer, parser::Parser};
+use netlang::{lexer::Lexer, parser::Parser, semantic};
 
 let tokens = Lexer::new("let timeout = 5s;")?.tokenize()?;
 let program = Parser::new(tokens)?.parse_program()?;
+if let Err(errors) = semantic::analyze(&program) {
+    for error in errors {
+        eprintln!("{error}");
+    }
+}
 println!("{program}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
@@ -171,6 +223,9 @@ println!("{program}");
 `parse_program` parses a complete program; `parse_expression_complete` is useful
 for isolated expression tests. Parsing returns the first error without exiting
 the host process. The CLI reports that error and exits unsuccessfully.
+`semantic::analyze(&program)` accepts an AST independently of the lexer/parser
+and returns `Result<(), Vec<SemanticError>>`, starting with fresh scopes for each
+program.
 
 Locations are one-based lines and UTF-8 **byte** columns. Diagnostics convert the
 source prefix to characters and expand tabs to four spaces for a basic caret.
@@ -187,8 +242,9 @@ cargo clippy --all-targets -- -D warnings
 
 Tests assert token kinds, source positions, scanner independence, operator
 precedence, AST structure, malformed syntax, numeric overflow, request
-configuration, match patterns, the success-criteria program, tree output, and CLI
-diagnostics. Implementation milestones are recorded as separate local commits.
+configuration, match patterns, the success-criteria program, tree output, CLI
+diagnostics, lexical scopes, recursion, argument counts, and invalid returns.
+Implementation milestones are recorded as separate local commits.
 
 ## Roadmap and progress tracking
 
@@ -209,6 +265,8 @@ its syntax changes, or its priority is revised.
 - [x] Basic `match` statements with literal and wildcard patterns
 - [x] Token and AST CLI commands
 - [x] Source-line diagnostics and readable AST output
+- [x] Initial semantic analysis with lexical symbol tables and scope checking
+- [x] `check` CLI command with collected semantic diagnostics
 
 ### Language syntax
 
@@ -568,8 +626,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Parser support for TCP and UDP connection expressions
 - [ ] Parser support for `SEND` and `RECEIVE` expressions
 - [ ] AST nodes for TCP and UDP connections and `SEND` / `RECEIVE`
-- [ ] Semantic analysis
-- [ ] Symbol tables and scope checking
+- [x] Initial semantic analysis: names, declarations, assignments, returns, and direct-call arity
+- [x] Symbol tables and lexical scope checking
 - [ ] Static type checking
 - [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
 - [ ] Protocol-state checking as an advanced semantic-analysis feature

@@ -1,16 +1,16 @@
-use netlang::{diagnostic, lexer::Lexer, parser::Parser};
+use netlang::{diagnostic, lexer::Lexer, parser::Parser, semantic};
 use std::{
     env, fs,
     io::{self, Write},
     process::ExitCode,
 };
 
-const USAGE: &str = "Usage: netlang <tokens|ast> <file.net>";
+const USAGE: &str = "Usage: netlang <tokens|ast|check> <file.net>";
 fn run(args: Vec<std::ffi::OsString>) -> Result<String, String> {
     if args.len() == 1 && (args[0] == "--help" || args[0] == "-h") {
         return Ok(format!("{USAGE}\n"));
     }
-    if args.len() != 2 || (args[0] != "tokens" && args[0] != "ast") {
+    if args.len() != 2 || (args[0] != "tokens" && args[0] != "ast" && args[0] != "check") {
         return Err(format!("{USAGE}\n"));
     }
     let filename = args[1].to_string_lossy();
@@ -37,7 +37,17 @@ fn run(args: Vec<std::ffi::OsString>) -> Result<String, String> {
         let program = Parser::new(tokens)
             .and_then(|mut parser| parser.parse_program())
             .map_err(|e| diagnostic::render(&filename, &source, e.line, e.column, &e.message))?;
-        Ok(program.pretty())
+        if args[0] == "check" {
+            semantic::analyze(&program).map_err(|errors| {
+                errors
+                    .iter()
+                    .map(|error| format!("error: {error}\n --> {filename}\n"))
+                    .collect::<String>()
+            })?;
+            Ok(format!("Semantic checks passed: {filename}\n"))
+        } else {
+            Ok(program.pretty())
+        }
     }
 }
 fn main() -> ExitCode {

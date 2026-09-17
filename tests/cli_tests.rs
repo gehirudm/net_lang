@@ -66,3 +66,64 @@ fn caret_handles_tabs_unicode_and_empty_eof_line() {
     assert!(output.contains("2 | \n"));
     assert!(output.ends_with("| ^\n"));
 }
+
+#[test]
+fn check_command_accepts_the_complete_program_without_execution() {
+    let output = cli(&["check", "examples/complete.net"]);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "Semantic checks passed: examples/complete.net\n"
+    );
+    let help = cli(&["--help"]);
+    assert!(
+        String::from_utf8(help.stdout)
+            .unwrap()
+            .contains("tokens|ast|check")
+    );
+}
+
+#[test]
+fn check_reports_multiple_errors_and_ast_remains_syntax_only() {
+    let path = std::env::temp_dir().join(format!("netlang-semantics-{}.net", std::process::id()));
+    std::fs::write(
+        &path,
+        "fn main() { print(missing); } return; let x = 1; let x = 2;",
+    )
+    .unwrap();
+    let output = cli(&["check", path.to_str().unwrap()]);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(error.matches("error:").count(), 3);
+    for fragment in [
+        "undefined name 'missing'",
+        "function 'main'",
+        "return is only allowed",
+        "duplicate declaration of 'x'",
+        path.to_str().unwrap(),
+    ] {
+        assert!(error.contains(fragment), "{error}");
+    }
+    assert!(cli(&["ast", path.to_str().unwrap()]).status.success());
+    assert!(cli(&["tokens", path.to_str().unwrap()]).status.success());
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn check_preserves_lexer_parser_and_file_errors() {
+    let path =
+        std::env::temp_dir().join(format!("netlang-check-syntax-{}.net", std::process::id()));
+    for (source, expected) in [("@", "unexpected character"), ("let x = 1", "expected ';'")] {
+        std::fs::write(&path, source).unwrap();
+        let output = cli(&["check", path.to_str().unwrap()]);
+        assert!(!output.status.success());
+        let error = String::from_utf8(output.stderr).unwrap();
+        assert!(error.contains(expected));
+        assert!(error.contains('^'));
+    }
+    std::fs::remove_file(&path).unwrap();
+    assert!(!cli(&["check", path.to_str().unwrap()]).status.success());
+    assert!(!cli(&["check"]).status.success());
+}
