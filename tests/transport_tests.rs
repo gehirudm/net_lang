@@ -256,12 +256,11 @@ fn interpreter_routes_connection_and_operators_through_the_runtime() {
 }
 
 #[test]
-fn standard_runtime_rejects_unimplemented_socket_operations_explicitly() {
+fn standard_runtime_rejects_invalid_transport_operations_explicitly() {
     for (source, expected) in [
-        ("TCP \"localhost:9000\";", "not supported"),
-        ("UDP \"localhost:9000\";", "not supported"),
-        ("1 SEND \"hello\";", "SEND is not supported"),
-        ("1 RECEIVE;", "RECEIVE is not supported"),
+        ("TCP \"localhost:9000\" using Login;", "not implemented"),
+        ("1 SEND \"hello\";", "requires a connection"),
+        ("1 RECEIVE;", "requires a connection"),
         ("TCP 42;", "address must be a string"),
         ("1 SEND \"hi\" TO 42;", "destination must be a string"),
     ] {

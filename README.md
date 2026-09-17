@@ -5,8 +5,8 @@ communication. It tokenizes source with a reentrant Flex scanner compiled as C,
 then uses a handwritten Rust recursive-descent parser to construct a Rust AST.
 An initial semantic-analysis pass checks lexical scopes and function usage.
 
-A tree-walking interpreter executes the core language, HTTP(S) requests, and
-bounded parallel iteration with isolated workers.
+A tree-walking interpreter executes the core language, HTTP(S) requests, TCP
+clients, connected UDP sockets, and bounded parallel iteration with isolated workers.
 
 ## Build and use
 
@@ -309,7 +309,7 @@ HTTP integration tests use local loopback servers; they make no public-network
 requests. TLS is supplied by the verified client configuration, but a local
 certificate-based HTTPS integration fixture remains future test work.
 
-## Transport frontend
+## Transport frontend and runtime
 
 The frontend parses TCP/UDP connection expressions, optional `using Protocol`
 metadata, and untyped communication operators:
@@ -328,12 +328,39 @@ assignment; nested sends require parentheses. Connection addresses accept
 expressions; use `(TCP address) RECEIVE` when receiving directly from a new
 connection. `TO` remains provisional syntax.
 
-The AST, semantic operand traversal, and interpreter host interfaces are
-implemented and tested with injected runtimes. The standard runtime reports
-these operations as unsupported: actual TCP/UDP sockets, byte representation,
-and receive framing are not implemented. Address and destination values must
-be strings. Protocol names are metadata only; protocol resolution, transport
-capability checks, typed packets, and typed receives remain future work.
+The standard runtime executes TCP client connections and connected UDP sockets.
+The `using Login` and `TO` forms above are parsed, but rejected at runtime until
+protocol support and unconnected UDP construction are implemented. Address and
+destination values must be strings. Semantic analysis checks operand names;
+transport capabilities are checked at runtime, not statically.
+
+The byte-oriented contract is:
+
+- `SEND` accepts strings (encoded as UTF-8) or byte values and returns `null`.
+  It adds no newline, length prefix, JSON encoding, or other framing.
+- TCP `RECEIVE` returns an arbitrary nonempty byte chunk, at most 65,535 bytes,
+  or `null` at EOF. A receive may contain part of a send or combine several sends.
+- UDP `RECEIVE` returns one complete datagram as bytes. Empty datagrams remain
+  empty byte values, distinct from TCP EOF. UDP sockets bind an ephemeral local
+  port and connect to the supplied peer; this is not a reliability handshake.
+  Maximum outgoing datagram size depends on the OS; oversized sends are errors.
+- Bytes can be stored, compared, printed, and sent again without UTF-8 decoding.
+  Printing uses `bytes[255, 0, ...]`. Byte literals, indexing, and explicit text
+  decoding APIs are future library work; binary values are not implicitly text.
+- Connection copies alias the same opaque handle. A runtime owns its sockets
+  until it is dropped, with a 1,024-connection limit. Explicit close and earlier
+  resource reclamation remain future work. Parallel workers must open their own
+  connections; captured handles from another runtime are rejected.
+- Connect attempts and blocking socket reads/writes use five-second timeouts.
+  DNS resolution is synchronous and outside that timeout; multiple addresses
+  and partial TCP writes can take longer overall. These are per-operation OS
+  timeouts, not total request deadlines. Failed sends may have sent some bytes;
+  the runtime does not retry them automatically.
+
+Protocol resolution, framing, typed packets, typed receives, server/listener
+syntax, unconnected UDP, configurable deadlines, and static transport capability
+checks remain future work. Loopback tests cover binary traffic, EOF, datagram
+boundaries, timeouts, socket cleanup, and independent parallel connections.
 
 ## Architecture
 
@@ -529,6 +556,9 @@ its syntax changes, or its priority is revised.
 
 - [ ] **First-class `SEND` and `RECEIVE` operators**
 
+  Untyped operators now execute on TCP clients and connected UDP sockets.
+  The broader typed and protocol-aware forms below remain planned.
+
   `SEND` and `RECEIVE` are Net-lang language constructs rather than ordinary
   library methods. They are intended to work across suitable transports,
   including TCP connections, WebSockets, connected UDP sockets, and custom
@@ -562,6 +592,9 @@ its syntax changes, or its priority is revised.
 
 - [ ] **TCP connections**
 
+  The basic client form below is implemented; protocol-aware connections and
+  server support remain planned.
+
   ```netlang
   let conn = TCP "example.com:9000";
 
@@ -586,6 +619,9 @@ its syntax changes, or its priority is revised.
   TCP server and listening syntax is **TBD**. No final syntax has been selected.
 
 - [ ] **UDP communication**
+
+  Connected UDP is implemented. Unconnected socket construction and `TO`
+  execution remain planned.
 
   A connected UDP socket can use the standard `SEND` and `RECEIVE` operators:
 
@@ -755,8 +791,8 @@ semantics, the networking model, error handling, concurrency behavior, and
 runtime APIs can be tested before the compiler commits to a native backend. It
 already executes variables and expressions, functions, control flow, HTTP
 requests, and isolated parallel iteration. TCP, UDP, and `SEND` / `RECEIVE`
-have frontend and interpreter host-interface support; their standard runtime
-execution and additional concurrency primitives remain planned.
+execute through the standard runtime for TCP clients and connected UDP sockets.
+Protocol-aware transport execution and additional concurrency primitives remain planned.
 
 #### Phase 3 — Intermediate Representation
 
@@ -871,13 +907,17 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [x] Core interpreter: values, functions, lexical scopes, control flow, and collections
 - [x] Interpreter HTTP and parallel integration
-- [ ] Interpreter integration for additional transports
+- [x] Interpreter integration for TCP clients and connected UDP sockets
 - [x] Actual HTTP(S) execution through the runtime interface
 - [x] HTTP retry and timeout runtime behavior
 - [x] Real parallel execution with bounded isolated workers
-- [ ] Transport-specific runtime implementation
-- [ ] TCP runtime
-- [ ] UDP runtime
+- [x] Initial transport-specific runtime implementation with byte values
+- [x] TCP client runtime with unframed byte streams
+- [x] Connected UDP runtime with datagram receives
+- [ ] TCP server/listener runtime (syntax TBD)
+- [ ] Unconnected UDP construction and destination-aware sends
+- [ ] Byte construction, indexing, and explicit text decoding APIs
+- [ ] Explicit connection close and configurable transport deadlines
 - [ ] WebSocket runtime
 - [ ] Standard library
 - [ ] Module loader

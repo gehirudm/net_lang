@@ -44,10 +44,20 @@ impl<R: Runtime> Interpreter<'_, R> {
         {
             if matches!(
                 left,
-                Value::Array(_) | Value::Object(_) | Value::Function(_) | Value::Print
+                Value::Array(_)
+                    | Value::Object(_)
+                    | Value::Function(_)
+                    | Value::Print
+                    | Value::Bytes(_)
+                    | Value::Connection(_)
             ) || matches!(
                 right,
-                Value::Array(_) | Value::Object(_) | Value::Function(_) | Value::Print
+                Value::Array(_)
+                    | Value::Object(_)
+                    | Value::Function(_)
+                    | Value::Print
+                    | Value::Bytes(_)
+                    | Value::Connection(_)
             ) {
                 return Err(self.error("string concatenation requires scalar values"));
             }

@@ -1,9 +1,10 @@
 //! Host effects used by the interpreter and, later, compiled programs.
 mod http;
+mod transport;
 mod value;
 use crate::ast::{HttpMethod, Transport};
 use std::io::Write;
-pub use value::{FunctionId, Value};
+pub use value::{ConnectionId, FunctionId, Value};
 
 /// Embedders can supply deterministic effects for tests or another runtime.
 pub trait Runtime {
@@ -50,6 +51,7 @@ pub trait Runtime {
 pub struct StandardRuntime<W: Write> {
     output: W,
     http: http::HttpRuntime,
+    transport: transport::TransportRuntime,
 }
 
 impl<W: Write> StandardRuntime<W> {
@@ -57,11 +59,33 @@ impl<W: Write> StandardRuntime<W> {
         Self {
             output,
             http: http::HttpRuntime::default(),
+            transport: transport::TransportRuntime::default(),
         }
     }
 }
 
 impl<W: Write> Runtime for StandardRuntime<W> {
+    fn connect(
+        &mut self,
+        transport: Transport,
+        address: &str,
+        protocol: Option<&str>,
+    ) -> Result<Value, String> {
+        self.transport.connect(transport, address, protocol)
+    }
+
+    fn send(
+        &mut self,
+        connection: &Value,
+        data: &Value,
+        destination: Option<&str>,
+    ) -> Result<Value, String> {
+        self.transport.send(connection, data, destination)
+    }
+
+    fn receive(&mut self, connection: &Value) -> Result<Value, String> {
+        self.transport.receive(connection)
+    }
     fn print(&mut self, text: &str) -> Result<(), String> {
         writeln!(self.output, "{text}").map_err(|error| format!("cannot write output: {error}"))
     }
@@ -74,6 +98,7 @@ impl<W: Write> Runtime for StandardRuntime<W> {
         Ok(Box::new(StandardRuntime {
             output: Vec::<u8>::new(),
             http: self.http.clone(),
+            transport: transport::TransportRuntime::default(),
         }))
     }
 }

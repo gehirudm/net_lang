@@ -4,11 +4,17 @@ use std::{collections::BTreeMap, fmt};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionId(pub(crate) usize);
 
+/// Opaque handle, valid only in the runtime that created it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectionId(pub(crate) u64);
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i64),
     Float(f64),
     String(String),
+    Bytes(Vec<u8>),
+    Connection(ConnectionId),
     Boolean(bool),
     Null,
     Duration(u64),
@@ -24,6 +30,8 @@ impl Value {
             Self::Integer(_) => "integer",
             Self::Float(_) => "float",
             Self::String(_) => "string",
+            Self::Bytes(_) => "bytes",
+            Self::Connection(_) => "connection",
             Self::Boolean(_) => "boolean",
             Self::Null => "null",
             Self::Duration(_) => "duration",
@@ -40,6 +48,8 @@ impl fmt::Display for Value {
             Self::Integer(v) => write!(f, "{v}"),
             Self::Float(v) => write!(f, "{v}"),
             Self::String(v) => f.write_str(v),
+            Self::Bytes(v) => write!(f, "bytes{v:?}"),
+            Self::Connection(_) => f.write_str("<connection>"),
             Self::Boolean(v) => write!(f, "{v}"),
             Self::Null => f.write_str("null"),
             Self::Duration(v) => write!(f, "{v}ms"),
