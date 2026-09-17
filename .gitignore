@@ -1,3 +1,6 @@
 /target/
 
 .DS_Store
+
+# Local milestone notes; intentionally not part of repository history.
+/devlogs/
