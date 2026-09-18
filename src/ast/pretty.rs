@@ -46,6 +46,9 @@ impl fmt::Display for Program {
 }
 fn statement(stmt: &Stmt) -> Tree {
     match stmt {
+        Stmt::Located {
+            statement: inner, ..
+        } => statement(inner),
         Stmt::Let { name, value } => Tree::new(format!("Let {name}"), vec![expression(value)]),
         Stmt::Expression(expr) => Tree::new("Expression", vec![expression(expr)]),
         Stmt::Block(statements) => Tree::new("Block", statements.iter().map(statement).collect()),

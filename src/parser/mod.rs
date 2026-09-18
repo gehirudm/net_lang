@@ -6,6 +6,7 @@ pub use error::ParseError;
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    spans: bool,
 }
 impl Parser {
     /// The token stream must contain exactly one EOF token, at its end.
@@ -25,7 +26,16 @@ impl Parser {
                     .map_or(crate::source::Span::point(line, column), Token::span),
             });
         }
-        Ok(Self { tokens, current: 0 })
+        Ok(Self {
+            tokens,
+            current: 0,
+            spans: false,
+        })
+    }
+    /// Preserve statement locations while retaining the bare-AST default API.
+    pub fn with_spans(mut self) -> Self {
+        self.spans = true;
+        self
     }
     fn peek(&self) -> &Token {
         &self.tokens[self.current]

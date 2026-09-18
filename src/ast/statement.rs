@@ -5,6 +5,10 @@ pub struct Program {
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
+    Located {
+        span: crate::source::Span,
+        statement: Box<Stmt>,
+    },
     Parallel {
         variable: String,
         iterable: Expr,
@@ -42,6 +46,26 @@ pub enum Stmt {
     Return {
         value: Option<Expr>,
     },
+}
+
+impl Stmt {
+    pub fn unspanned(&self) -> &Self {
+        let mut statement = self;
+        while let Self::Located {
+            statement: inner, ..
+        } = statement
+        {
+            statement = inner;
+        }
+        statement
+    }
+
+    pub fn span(&self) -> Option<crate::source::Span> {
+        match self {
+            Self::Located { span, .. } => Some(*span),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

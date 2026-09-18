@@ -17,6 +17,7 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
         context: vec!["program".into()],
         errors: Vec::new(),
         parallel_boundaries: Vec::new(),
+        current_span: None,
     };
     analyzer.scopes.enter();
     analyzer.statements(&program.statements);
@@ -29,6 +30,7 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
 }
 
 struct Analyzer {
+    current_span: Option<crate::source::Span>,
     scopes: Scopes,
     function_depth: usize,
     context: Vec<String>,
@@ -43,6 +45,7 @@ impl Analyzer {
             kind,
             message: message.into(),
             context: self.context.clone(),
+            span: self.current_span,
         });
     }
 
@@ -72,8 +75,10 @@ impl Analyzer {
         for (i, stmt) in statements.iter().enumerate() {
             if let Stmt::Function {
                 name, parameters, ..
-            } = stmt
+            } = stmt.unspanned()
             {
+                let previous_span = self.current_span;
+                self.current_span = stmt.span().or(previous_span);
                 self.context.push(format!("statement {}", i + 1));
                 self.declare(
                     name,
@@ -82,6 +87,7 @@ impl Analyzer {
                     },
                 );
                 self.context.pop();
+                self.current_span = previous_span;
             }
         }
         for (i, stmt) in statements.iter().enumerate() {
@@ -94,7 +100,13 @@ impl Analyzer {
     /// Function parameters and loop variables share the body's outermost scope.
     /// Nested explicit blocks still introduce their own scope.
     fn body_in_current_scope(&mut self, body: &Stmt) {
-        if let Stmt::Block(statements) = body {
+        if let Stmt::Located { span, statement } = body {
+            let previous_span = self.current_span.replace(*span);
+            self.body_in_current_scope(statement);
+            self.current_span = previous_span;
+            return;
+        }
+        if let Stmt::Block(statements) = body.unspanned() {
             self.statements(statements);
         } else {
             // Also support ASTs assembled without the parser.
@@ -112,6 +124,11 @@ impl Analyzer {
 
     fn statement(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::Located { span, statement } => {
+                let previous_span = self.current_span.replace(*span);
+                self.statement(statement);
+                self.current_span = previous_span;
+            }
             Stmt::Let { name, value } => {
                 // An initializer may refer to an outer binding of the same name.
                 self.expression(value);

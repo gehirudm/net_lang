@@ -13,6 +13,21 @@ impl Parser {
         Ok(Program { statements })
     }
     fn parse_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let start = self.peek().span().start;
+        let statement = self.parse_declaration_inner()?;
+        if self.spans {
+            Ok(Stmt::Located {
+                span: crate::source::Span {
+                    start,
+                    end: self.previous().span().end,
+                },
+                statement: Box::new(statement),
+            })
+        } else {
+            Ok(statement)
+        }
+    }
+    fn parse_declaration_inner(&mut self) -> Result<Stmt, ParseError> {
         if self.matches(K::Fn) {
             self.parse_function()
         } else if self.matches(K::Let) {

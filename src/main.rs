@@ -39,23 +39,45 @@ fn run(args: Vec<std::ffi::OsString>, output: &mut impl Write) -> Result<String,
         Ok(output)
     } else {
         let program = Parser::new(tokens)
-            .and_then(|mut parser| parser.parse_program())
+            .and_then(|parser| parser.with_spans().parse_program())
             .map_err(|e| diagnostic::render_span(&filename, &source, e.span, &e.message))?;
         if args[0] == "check" {
             semantic::analyze(&program).map_err(|errors| {
                 errors
                     .iter()
-                    .map(|error| format!("error: {error}\n --> {filename}\n"))
+                    .map(|error| located_error(&filename, &source, error.span, &error.to_string()))
                     .collect::<String>()
             })?;
             Ok(format!("Semantic checks passed: {filename}\n"))
         } else if args[0] == "run" {
-            interpreter::execute(&program, &mut StandardRuntime::new(output))
-                .map_err(|error| format!("error: {error}\n --> {filename}\n"))?;
+            interpreter::execute(&program, &mut StandardRuntime::new(output)).map_err(|error| {
+                match error {
+                    interpreter::ExecutionError::Runtime(error) => {
+                        located_error(&filename, &source, error.span, &error.to_string())
+                    }
+                    interpreter::ExecutionError::Semantic(errors) => errors
+                        .iter()
+                        .map(|error| {
+                            located_error(&filename, &source, error.span, &error.to_string())
+                        })
+                        .collect::<String>(),
+                }
+            })?;
             Ok(String::new())
         } else {
             Ok(program.pretty())
         }
+    }
+}
+fn located_error(
+    filename: &str,
+    source: &str,
+    span: Option<netlang::source::Span>,
+    message: &str,
+) -> String {
+    match span {
+        Some(span) => diagnostic::render_span(filename, source, span, message),
+        None => format!("error: {message}\n --> {filename}\n"),
     }
 }
 fn main() -> ExitCode {

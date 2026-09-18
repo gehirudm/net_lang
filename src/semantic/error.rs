@@ -16,8 +16,9 @@ pub enum SemanticErrorKind {
 pub struct SemanticError {
     pub kind: SemanticErrorKind,
     pub message: String,
-    /// AST scope/statement context. Source positions await spanned AST nodes.
+    /// AST scope/statement context, also available for manually built bare ASTs.
     pub context: Vec<String>,
+    pub span: Option<crate::source::Span>,
 }
 
 impl fmt::Display for SemanticError {

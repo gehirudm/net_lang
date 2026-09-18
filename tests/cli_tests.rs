@@ -101,6 +101,8 @@ fn check_reports_multiple_errors_and_ast_remains_syntax_only() {
     assert!(output.stdout.is_empty());
     let error = String::from_utf8(output.stderr).unwrap();
     assert_eq!(error.matches("error:").count(), 3);
+    assert!(error.contains(":1:13"), "{error}");
+    assert!(error.contains("^~~~~~~~~~~~~~~"), "{error}");
     for fragment in [
         "undefined name 'missing'",
         "function 'main'",
@@ -144,6 +146,8 @@ fn run_executes_main_and_preserves_output_before_runtime_errors() {
     assert_eq!(output.stdout, b"42\n");
     let error = String::from_utf8(output.stderr).unwrap();
     assert!(error.contains("division by zero"));
+    assert!(error.contains(":1:24"), "{error}");
+    assert!(error.contains("^~~~~~"), "{error}");
     assert!(error.contains("in function 'main'"));
     std::fs::remove_file(path).unwrap();
 }

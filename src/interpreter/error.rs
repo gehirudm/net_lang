@@ -5,6 +5,7 @@ use std::fmt;
 pub struct RuntimeError {
     pub message: String,
     pub call_stack: Vec<String>,
+    pub span: Option<crate::source::Span>,
 }
 
 impl fmt::Display for RuntimeError {

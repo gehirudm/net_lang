@@ -63,6 +63,7 @@ pub fn execute_with_limits(
         return Err(ExecutionError::Runtime(RuntimeError {
             message: "parallel worker limit must be between 1 and 64".into(),
             call_stack: Vec::new(),
+            span: None,
         }));
     }
     let mut interpreter = Interpreter {
@@ -78,6 +79,7 @@ pub fn execute_with_limits(
         call_stack: Vec::new(),
         captured_bindings: 0,
         in_parallel_worker: false,
+        current_span: None,
     };
     let mut env = vec![HashMap::from([("print".into(), 0)]), HashMap::new()];
     for builtin in crate::runtime::Builtin::ALL {
@@ -90,14 +92,15 @@ pub fn execute_with_limits(
     }
     let result = (|| {
         // Reject an invalid entry point before top-level side effects.
-        if program.statements.iter().any(|stmt| matches!(stmt, Stmt::Function { name, parameters, .. } if name == "main" && !parameters.is_empty())) {
+        if let Some(stmt) = program.statements.iter().find(|stmt| matches!(stmt.unspanned(), Stmt::Function { name, parameters, .. } if name == "main" && !parameters.is_empty())) {
+            interpreter.current_span = stmt.span();
             return Err(interpreter.error("entry point 'main' must have no parameters"));
         }
         interpreter.statements(&program.statements, &mut env)?;
         if program
             .statements
             .iter()
-            .any(|stmt| matches!(stmt, Stmt::Function { name, .. } if name == "main"))
+            .any(|stmt| matches!(stmt.unspanned(), Stmt::Function { name, .. } if name == "main"))
             && let Some(id) = env.last().unwrap().get("main")
             && let Some(Value::Function(function)) = interpreter.bindings[*id].value.clone()
         {
@@ -127,6 +130,7 @@ enum Flow {
 }
 
 struct Interpreter<'a, R: Runtime> {
+    current_span: Option<crate::source::Span>,
     runtime: &'a mut R,
     bindings: Vec<Binding>,
     functions: Vec<Function>,
@@ -144,6 +148,7 @@ impl<R: Runtime> Interpreter<'_, R> {
         RuntimeError {
             message: message.into(),
             call_stack: self.call_stack.clone(),
+            span: self.current_span,
         }
     }
     fn tick(&mut self) -> Result<()> {
@@ -182,7 +187,7 @@ impl<R: Runtime> Interpreter<'_, R> {
         // are visible immediately, but each captures the names at its declaration.
         let mut slots = Vec::with_capacity(statements.len());
         for stmt in statements {
-            let slot = match stmt {
+            let slot = match stmt.unspanned() {
                 Stmt::Let { .. } => Some(self.allocate(None, true)),
                 Stmt::Function { name, .. } => {
                     let id = self.allocate(None, false);
@@ -195,7 +200,7 @@ impl<R: Runtime> Interpreter<'_, R> {
         }
         let mut declaration_env = env.clone();
         for (stmt, slot) in statements.iter().zip(&slots) {
-            match stmt {
+            match stmt.unspanned() {
                 Stmt::Let { name, .. } => {
                     declaration_env
                         .last_mut()
@@ -220,16 +225,22 @@ impl<R: Runtime> Interpreter<'_, R> {
             }
         }
         for (stmt, slot) in statements.iter().zip(slots) {
-            self.tick()?;
-            let flow = if let Stmt::Let { name, value } = stmt {
-                let value = self.expression(value, env)?;
-                let id = slot.unwrap();
-                self.bindings[id].value = Some(value);
-                env.last_mut().unwrap().insert(name.clone(), id);
-                Flow::Continue
-            } else {
-                self.statement(stmt, env)?
-            };
+            let previous_span = self.current_span;
+            self.current_span = stmt.span().or(previous_span);
+            let result = (|| {
+                self.tick()?;
+                if let Stmt::Let { name, value } = stmt.unspanned() {
+                    let value = self.expression(value, env)?;
+                    let id = slot.unwrap();
+                    self.bindings[id].value = Some(value);
+                    env.last_mut().unwrap().insert(name.clone(), id);
+                    Ok(Flow::Continue)
+                } else {
+                    self.statement(stmt.unspanned(), env)
+                }
+            })();
+            self.current_span = previous_span;
+            let flow = result?;
             if let Flow::Return(_) = flow {
                 return Ok(flow);
             }
@@ -238,7 +249,13 @@ impl<R: Runtime> Interpreter<'_, R> {
     }
 
     fn body(&mut self, body: &Stmt, env: &mut Environment) -> Result<Flow> {
-        match body {
+        if let Stmt::Located { span, statement } = body {
+            let previous_span = self.current_span.replace(*span);
+            let result = self.body(statement, env);
+            self.current_span = previous_span;
+            return result;
+        }
+        match body.unspanned() {
             Stmt::Block(statements) => self.statements(statements, env),
             stmt => self.statements(std::slice::from_ref(stmt), env),
         }
@@ -258,6 +275,12 @@ impl<R: Runtime> Interpreter<'_, R> {
 
     fn statement(&mut self, stmt: &Stmt, env: &mut Environment) -> Result<Flow> {
         match stmt {
+            Stmt::Located { span, statement } => {
+                let previous_span = self.current_span.replace(*span);
+                let result = self.statement(statement, env);
+                self.current_span = previous_span;
+                return result;
+            }
             Stmt::Let { .. } => unreachable!("let statements use their reserved slot"),
             Stmt::Function { .. } => {}
             Stmt::Expression(expr) => {
