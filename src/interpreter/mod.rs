@@ -5,7 +5,7 @@ mod expression;
 mod operations;
 mod parallel;
 use crate::{
-    ast::{Pattern, Program, Stmt},
+    ast::{Expr, Pattern, Program, Stmt},
     runtime::{FunctionId, Runtime, Value},
     semantic,
 };
@@ -273,6 +273,14 @@ impl<R: Runtime> Interpreter<'_, R> {
         }
     }
 
+    fn condition(&mut self, expression: &Expr, env: &Environment) -> Result<bool> {
+        let value = self.expression(expression, env)?;
+        self.boolean(value).map_err(|mut error| {
+            error.span = expression.span().or(error.span);
+            error
+        })
+    }
+
     fn statement(&mut self, stmt: &Stmt, env: &mut Environment) -> Result<Flow> {
         match stmt {
             Stmt::Located { span, statement } => {
@@ -298,8 +306,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                 then_branch,
                 else_branch,
             } => {
-                let value = self.expression(condition, env)?;
-                if self.boolean(value)? {
+                if self.condition(condition, env)? {
                     return self.scoped_body(then_branch, env);
                 }
                 if let Some(branch) = else_branch {
@@ -307,8 +314,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                 }
             }
             Stmt::While { condition, body } => loop {
-                let value = self.expression(condition, env)?;
-                if !self.boolean(value)? {
+                if !self.condition(condition, env)? {
                     break;
                 }
                 if let flow @ Flow::Return(_) = self.scoped_body(body, env)? {
@@ -337,7 +343,7 @@ impl<R: Runtime> Interpreter<'_, R> {
             Stmt::Match { expression, arms } => {
                 let value = self.expression(expression, env)?;
                 for arm in arms {
-                    let matches = match (&arm.pattern, &value) {
+                    let matches = match (arm.pattern.unspanned(), &value) {
                         (Pattern::Wildcard, _) | (Pattern::Null, Value::Null) => true,
                         (Pattern::Integer(a), Value::Integer(b)) => a == b,
                         (Pattern::String(a), Value::String(b)) => a == b,

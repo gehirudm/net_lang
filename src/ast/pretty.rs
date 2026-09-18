@@ -115,7 +115,8 @@ fn statement(stmt: &Stmt) -> Tree {
         } => {
             let mut children = vec![Tree::new("Value", vec![expression(expr)])];
             children.extend(arms.iter().map(|arm| {
-                let pattern = match &arm.pattern {
+                let pattern = match arm.pattern.unspanned() {
+                    Pattern::Located { .. } => unreachable!("pattern location was removed"),
                     Pattern::Integer(value) => value.to_string(),
                     Pattern::String(value) => format!("{value:?}"),
                     Pattern::Boolean(value) => value.to_string(),
@@ -130,6 +131,9 @@ fn statement(stmt: &Stmt) -> Tree {
 }
 fn expression(expr: &Expr) -> Tree {
     match expr {
+        Expr::Located {
+            expression: inner, ..
+        } => expression(inner),
         Expr::Connection {
             transport,
             address,

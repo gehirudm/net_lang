@@ -32,7 +32,7 @@ impl Parser {
             spans: false,
         })
     }
-    /// Preserve statement locations while retaining the bare-AST default API.
+    /// Preserve statement, expression, and pattern locations; default ASTs are bare.
     pub fn with_spans(mut self) -> Self {
         self.spans = true;
         self

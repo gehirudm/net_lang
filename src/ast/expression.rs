@@ -1,5 +1,9 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    Located {
+        span: crate::source::Span,
+        expression: Box<Expr>,
+    },
     Connection {
         transport: Transport,
         address: Box<Expr>,
@@ -53,6 +57,24 @@ pub enum Expr {
         object: Box<Expr>,
         index: Box<Expr>,
     },
+}
+impl Expr {
+    pub fn unspanned(&self) -> &Self {
+        let mut expression = self;
+        while let Self::Located {
+            expression: inner, ..
+        } = expression
+        {
+            expression = inner;
+        }
+        expression
+    }
+    pub fn span(&self) -> Option<crate::source::Span> {
+        match self {
+            Self::Located { span, .. } => Some(*span),
+            _ => None,
+        }
+    }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjectField {

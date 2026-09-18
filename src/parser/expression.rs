@@ -5,6 +5,24 @@ use crate::{
 };
 
 impl Parser {
+    fn locate_expression(&self, expression: Expr, start: crate::source::Position) -> Expr {
+        if !self.spans {
+            return expression;
+        }
+        // Parentheses extend the existing node's range without adding an
+        // executable grouping node or nested location-only wrappers.
+        let expression = match expression {
+            Expr::Located { expression, .. } => *expression,
+            other => other,
+        };
+        Expr::Located {
+            span: crate::source::Span {
+                start,
+                end: self.previous().span().end,
+            },
+            expression: Box::new(expression),
+        }
+    }
     /// Parse one expression, leaving subsequent tokens for the caller.
     pub fn parse_expression(&mut self) -> Result<Expr, ParseError> {
         self.parse_assignment()
@@ -16,19 +34,23 @@ impl Parser {
         Ok(expr)
     }
     fn parse_assignment(&mut self) -> Result<Expr, ParseError> {
+        let start = self.peek().span().start;
         let target = self.parse_send()?;
         if self.matches(K::Equal) {
             if !matches!(
-                target,
+                target.unspanned(),
                 Expr::Identifier(_) | Expr::Property { .. } | Expr::Index { .. }
             ) {
                 return Err(Self::error_at(self.previous(), "invalid assignment target"));
             }
             let value = self.parse_assignment()?;
-            Ok(Expr::Assignment {
-                target: Box::new(target),
-                value: Box::new(value),
-            })
+            Ok(self.locate_expression(
+                Expr::Assignment {
+                    target: Box::new(target),
+                    value: Box::new(value),
+                },
+                start,
+            ))
         } else {
             Ok(target)
         }
@@ -36,6 +58,7 @@ impl Parser {
     // SEND binds more tightly than assignment but less tightly than logical OR.
     // Chained sends must be parenthesized rather than guessing their grouping.
     fn parse_send(&mut self) -> Result<Expr, ParseError> {
+        let start = self.peek().span().start;
         let connection = self.parse_or()?;
         if !self.matches(K::Send) {
             return Ok(connection);
@@ -49,11 +72,14 @@ impl Parser {
         if self.check(K::Send) {
             return Err(self.error("parenthesize nested SEND expressions"));
         }
-        Ok(Expr::Send {
-            connection: Box::new(connection),
-            data: Box::new(data),
-            destination,
-        })
+        Ok(self.locate_expression(
+            Expr::Send {
+                connection: Box::new(connection),
+                data: Box::new(data),
+                destination,
+            },
+            start,
+        ))
     }
 
     // Each level delegates operands to the next tighter precedence level.
@@ -62,6 +88,7 @@ impl Parser {
         operand: fn(&mut Self) -> Result<Expr, ParseError>,
         operators: &[(K, BinaryOp)],
     ) -> Result<Expr, ParseError> {
+        let start = self.peek().span().start;
         let mut expr = operand(self)?;
         while let Some((_, operator)) = operators.iter().find(|(kind, _)| self.check(*kind)) {
             let operator = *operator;
@@ -71,6 +98,7 @@ impl Parser {
                 operator,
                 right: Box::new(operand(self)?),
             };
+            expr = self.locate_expression(expr, start);
         }
         Ok(expr)
     }
@@ -117,21 +145,24 @@ impl Parser {
         )
     }
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        let start = self.peek().span().start;
         if self.matches(K::Bang) || self.matches(K::Minus) {
             let operator = if self.previous().kind == K::Bang {
                 UnaryOp::Not
             } else {
                 UnaryOp::Negate
             };
-            Ok(Expr::Unary {
+            let expression = Expr::Unary {
                 operator,
                 expression: Box::new(self.parse_unary()?),
-            })
+            };
+            Ok(self.locate_expression(expression, start))
         } else {
             self.parse_postfix()
         }
     }
     fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
+        let start = self.peek().span().start;
         let mut expr = self.parse_primary()?;
         loop {
             if self.matches(K::LeftParen) {
@@ -162,6 +193,7 @@ impl Parser {
             } else {
                 return Ok(expr);
             }
+            expr = self.locate_expression(expr, start);
         }
     }
     fn expression_list(&mut self, closing: K) -> Result<Vec<Expr>, ParseError> {
@@ -178,6 +210,11 @@ impl Parser {
         Ok(values)
     }
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+        let start = self.peek().span().start;
+        let expression = self.parse_primary_inner()?;
+        Ok(self.locate_expression(expression, start))
+    }
+    fn parse_primary_inner(&mut self) -> Result<Expr, ParseError> {
         let token = self.advance();
         match token.kind {
             K::Tcp | K::Udp => self.parse_connection_expression(token.kind),
@@ -275,6 +312,7 @@ impl Parser {
     }
     // Called after the opening brace has been consumed.
     fn parse_object(&mut self) -> Result<Expr, ParseError> {
+        let start = self.previous().span().start;
         let mut fields = Vec::new();
         if !self.check(K::RightBrace) {
             loop {
@@ -300,7 +338,7 @@ impl Parser {
             }
         }
         self.consume(K::RightBrace, "expected '}' after object")?;
-        Ok(Expr::Object(fields))
+        Ok(self.locate_expression(Expr::Object(fields), start))
     }
     pub(super) fn integer(token: &Token) -> Result<i64, ParseError> {
         token

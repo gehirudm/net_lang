@@ -11,6 +11,12 @@ enum Selector {
 
 impl<R: Runtime> Interpreter<'_, R> {
     pub(super) fn expression(&mut self, expr: &Expr, env: &Environment) -> Result<Value> {
+        if let Expr::Located { span, expression } = expr {
+            let previous = self.current_span.replace(*span);
+            let result = self.expression(expression, env);
+            self.current_span = previous;
+            return result;
+        }
         self.tick()?;
         if self.expression_depth >= self.limits.expression_depth {
             return Err(self.error("expression depth limit exceeded"));
@@ -23,6 +29,9 @@ impl<R: Runtime> Interpreter<'_, R> {
 
     fn expression_inner(&mut self, expr: &Expr, env: &Environment) -> Result<Value> {
         Ok(match expr {
+            Expr::Located { .. } => {
+                unreachable!("expression locations are handled before evaluation")
+            }
             Expr::Connection {
                 transport,
                 address,
@@ -220,6 +229,12 @@ impl<R: Runtime> Interpreter<'_, R> {
         env: &Environment,
         selectors: &mut Vec<Selector>,
     ) -> Result<usize> {
+        if let Expr::Located { span, expression } = expr {
+            let previous = self.current_span.replace(*span);
+            let result = self.target(expression, env, selectors);
+            self.current_span = previous;
+            return result;
+        }
         self.tick()?;
         match expr {
             Expr::Identifier(name) => self.resolve(env, name),

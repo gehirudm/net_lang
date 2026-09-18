@@ -228,6 +228,11 @@ impl Analyzer {
 
     fn expression(&mut self, expr: &Expr) {
         match expr {
+            Expr::Located { span, expression } => {
+                let previous = self.current_span.replace(*span);
+                self.expression(expression);
+                self.current_span = previous;
+            }
             Expr::Connection { address, .. } => self.expression(address),
             Expr::Send {
                 connection,
@@ -266,7 +271,9 @@ impl Analyzer {
                 self.expression(right);
             }
             Expr::Assignment { target, value } => {
-                match target.as_ref() {
+                let previous = self.current_span;
+                self.current_span = target.span().or(previous);
+                match target.unspanned() {
                     Expr::Identifier(name) => {
                         if self
                             .resolve(name)
@@ -288,11 +295,12 @@ impl Analyzer {
                     }
                 }
                 self.check_parallel_assignment(target);
+                self.current_span = previous;
                 self.expression(value);
             }
             Expr::Call { callee, arguments } => {
                 self.expression(callee);
-                if let Expr::Identifier(name) = callee.as_ref()
+                if let Expr::Identifier(name) = callee.unspanned()
                     && let Some(Symbol::Function { arity }) = self.scopes.resolve(name)
                     && arity != arguments.len()
                 {
@@ -323,9 +331,9 @@ impl Analyzer {
     }
 
     fn check_parallel_assignment(&mut self, target: &Expr) {
-        let mut root = target;
+        let mut root = target.unspanned();
         while let Expr::Property { object, .. } | Expr::Index { object, .. } = root {
-            root = object;
+            root = object.unspanned();
         }
         if let Expr::Identifier(name) = root
             && let Some((boundary, _)) = self.parallel_boundaries.last()

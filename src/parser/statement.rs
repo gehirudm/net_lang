@@ -128,6 +128,14 @@ impl Parser {
                 K::Identifier if token.lexeme == "_" => Pattern::Wildcard,
                 _ => return Err(Self::error_at(&token, "expected literal pattern or '_'")),
             };
+            let pattern = if self.spans {
+                Pattern::Located {
+                    span: token.span(),
+                    pattern: Box::new(pattern),
+                }
+            } else {
+                pattern
+            };
             self.consume(K::FatArrow, "expected '=>' after match pattern")?;
             arms.push(MatchArm {
                 pattern,

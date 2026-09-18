@@ -75,9 +75,28 @@ pub struct MatchArm {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
+    Located {
+        span: crate::source::Span,
+        pattern: Box<Pattern>,
+    },
     Integer(i64),
     String(String),
     Boolean(bool),
     Null,
     Wildcard,
+}
+impl Pattern {
+    pub fn unspanned(&self) -> &Self {
+        let mut pattern = self;
+        while let Self::Located { pattern: inner, .. } = pattern {
+            pattern = inner;
+        }
+        pattern
+    }
+    pub fn span(&self) -> Option<crate::source::Span> {
+        match self {
+            Self::Located { span, .. } => Some(*span),
+            _ => None,
+        }
+    }
 }

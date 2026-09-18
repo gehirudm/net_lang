@@ -186,8 +186,8 @@ Request option validity, static types, callee types, match exhaustiveness, and
 runtime initialization order are not checked yet. A successful check therefore
 does not guarantee that a program will run successfully.
 
-Semantic errors identify the filename, owning statement range, and AST scope
-context. Individual subexpression ranges remain future work. `examples/match.net`
+Semantic errors identify the filename, relevant expression or statement range, and AST scope
+context. `examples/match.net`
 is a syntax fragment
 using an undeclared `response`; it parses but intentionally fails semantic
 checking. The complete example declares that binding and passes.
@@ -232,7 +232,7 @@ Current runtime decisions:
 The runtime interface separates printing and network effects from AST evaluation.
 Embedders can provide a custom `runtime::Runtime`; the standard runtime supports
 printing, HTTP(S), TCP, and UDP. Runtime errors include function call stacks and
-the owning statement location when parsed with spans. Binding/function arenas
+the relevant expression or statement location when parsed with spans. Binding/function arenas
 are released
 after each run but retain expired scopes during a run; memory reclamation for
 long-running programs remains future work.
@@ -484,12 +484,13 @@ alongside its existing start line/column fields. Parser diagnostics underline
 the whole unexpected token; EOF errors retain an insertion caret. Multiline
 ranges show the first source line and an end-position note. Diagnostics convert
 byte positions to character columns and expand tabs to four spaces.
-The CLI preserves statement spans with `Parser::with_spans()` and highlights
-owning statements for semantic/runtime failures, including function and worker
+The CLI preserves statement, expression, and pattern spans with `Parser::with_spans()` and highlights
+relevant expressions for semantic/runtime failures, falling back to owning statements, including function and worker
 errors. Library callers can opt into the same behavior; plain `Parser::new`
-retains its bare-AST default. `Stmt::Located` carries the metadata, while
-`Stmt::unspanned()` exposes the underlying syntax. Expression/pattern locations,
-source file IDs, and display-width handling for wide/combining characters remain
+retains its bare-AST default. `Stmt::Located`, `Expr::Located`, and `Pattern::Located`
+carry the metadata; their `unspanned()` methods expose the underlying syntax.
+Location wrappers do not consume execution budget or change pretty-printed AST output.
+Source file IDs and display-width handling for wide/combining characters remain
 future improvements.
 
 ## Development
@@ -1016,7 +1017,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Module loader
 - [x] Shared source spans, token ranges, and full-token parser diagnostics
 - [x] Optional statement AST spans and source-located semantic/runtime diagnostics
-- [ ] Expression/pattern spans and multiple-source diagnostic support
+- [x] Expression/pattern spans and subexpression diagnostics
+- [ ] Multiple-source diagnostic support
 - [ ] Net-lang intermediate representation (IR)
 - [ ] Backend abstraction
 - [ ] Native code generation backend
