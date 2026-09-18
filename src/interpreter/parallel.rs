@@ -26,6 +26,9 @@ struct WorkerRuntime {
 }
 
 impl Runtime for WorkerRuntime {
+    fn bind_udp(&mut self, address: &str) -> std::result::Result<Value, String> {
+        self.host.bind_udp(address)
+    }
     fn close(&mut self, connection: &Value) -> std::result::Result<(), String> {
         self.host.close(connection)
     }

@@ -6,7 +6,7 @@ then uses a handwritten Rust recursive-descent parser to construct a Rust AST.
 An initial semantic-analysis pass checks lexical scopes and function usage.
 
 A tree-walking interpreter executes the core language, HTTP(S) requests, TCP
-clients, connected UDP sockets, and bounded parallel iteration with isolated workers.
+clients, connected and unconnected UDP sockets, and bounded parallel iteration with isolated workers.
 
 ## Build and use
 
@@ -329,11 +329,26 @@ assignment; nested sends require parentheses. Connection addresses accept
 expressions; use `(TCP address) RECEIVE` when receiving directly from a new
 connection. `TO` remains provisional syntax.
 
-The standard runtime executes TCP client connections and connected UDP sockets.
-The `using Login` and `TO` forms above are parsed, but rejected at runtime until
-protocol support and unconnected UDP construction are implemented. Address and
-destination values must be strings. Semantic analysis checks operand names;
+The standard runtime executes TCP clients and connected/unconnected UDP sockets.
+`using Login` is parsed but rejected until protocol support is implemented.
+`TO` requires an unconnected UDP socket. Address and destination values must be
+strings. Semantic analysis checks operand names;
 transport capabilities are checked at runtime, not statically.
+
+An unconnected socket binds a local address using an object configuration:
+
+```netlang
+let socket = UDP { bind: "0.0.0.0:5000" };
+let packet = socket RECEIVE;
+socket SEND packet.data TO packet.address;
+close(socket);
+```
+
+Only the `bind` field is accepted; its value must be a string. Port `0` requests
+an ephemeral port. Unconnected receives return `{ data: bytes, address: string }`,
+including the numeric sender address (IPv6 addresses are bracketed). Each send
+requires `TO`. Connected UDP retains byte-valued receives and rejects `TO`,
+avoiding platform-dependent behavior when overriding a connected peer.
 
 The byte-oriented contract is:
 
@@ -341,7 +356,7 @@ The byte-oriented contract is:
   It adds no newline, length prefix, JSON encoding, or other framing.
 - TCP `RECEIVE` returns an arbitrary nonempty byte chunk, at most 65,535 bytes,
   or `null` at EOF. A receive may contain part of a send or combine several sends.
-- UDP `RECEIVE` returns one complete datagram as bytes. Empty datagrams remain
+- Connected UDP `RECEIVE` returns one complete datagram as bytes. Empty datagrams remain
   empty byte values, distinct from TCP EOF. UDP sockets bind an ephemeral local
   port and connect to the supplied peer; this is not a reliability handshake.
   Maximum outgoing datagram size depends on the OS; oversized sends are errors.
@@ -369,7 +384,7 @@ The byte-oriented contract is:
   the runtime does not retry them automatically.
 
 Protocol resolution, framing, typed packets, typed receives, server/listener
-syntax, unconnected UDP, configurable deadlines, and static transport capability
+syntax, configurable deadlines, and static transport capability
 checks remain future work. Loopback tests cover binary traffic, EOF, datagram
 boundaries, timeouts, socket cleanup, and independent parallel connections.
 
@@ -567,7 +582,7 @@ its syntax changes, or its priority is revised.
 
 - [ ] **First-class `SEND` and `RECEIVE` operators**
 
-  Untyped operators now execute on TCP clients and connected UDP sockets.
+  Untyped operators now execute on TCP clients and connected/unconnected UDP sockets.
   The broader typed and protocol-aware forms below remain planned.
 
   `SEND` and `RECEIVE` are Net-lang language constructs rather than ordinary
@@ -631,8 +646,7 @@ its syntax changes, or its priority is revised.
 
 - [ ] **UDP communication**
 
-  Connected UDP is implemented. Unconnected socket construction and `TO`
-  execution remain planned.
+  Connected UDP, unconnected `UDP { bind: address }`, and `TO` sends are implemented.
 
   A connected UDP socket can use the standard `SEND` and `RECEIVE` operators:
 
@@ -802,7 +816,7 @@ semantics, the networking model, error handling, concurrency behavior, and
 runtime APIs can be tested before the compiler commits to a native backend. It
 already executes variables and expressions, functions, control flow, HTTP
 requests, and isolated parallel iteration. TCP, UDP, and `SEND` / `RECEIVE`
-execute through the standard runtime for TCP clients and connected UDP sockets.
+execute through the standard runtime for TCP clients and connected/unconnected UDP sockets.
 Protocol-aware transport execution and additional concurrency primitives remain planned.
 
 #### Phase 3 — Intermediate Representation
@@ -918,7 +932,7 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [x] Core interpreter: values, functions, lexical scopes, control flow, and collections
 - [x] Interpreter HTTP and parallel integration
-- [x] Interpreter integration for TCP clients and connected UDP sockets
+- [x] Interpreter integration for TCP clients and connected/unconnected UDP sockets
 - [x] Actual HTTP(S) execution through the runtime interface
 - [x] HTTP retry and timeout runtime behavior
 - [x] Real parallel execution with bounded isolated workers
@@ -926,7 +940,7 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [x] TCP client runtime with unframed byte streams
 - [x] Connected UDP runtime with datagram receives
 - [ ] TCP server/listener runtime (syntax TBD)
-- [ ] Unconnected UDP construction and destination-aware sends
+- [x] Unconnected UDP construction, sender-aware receives, and destination-aware sends
 - [x] Byte construction, read-only indexing, concatenation, length, and explicit UTF-8 conversion
 - [x] Explicit connection close with alias invalidation and capacity reclamation
 - [ ] Configurable transport deadlines

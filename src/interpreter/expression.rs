@@ -29,6 +29,25 @@ impl<R: Runtime> Interpreter<'_, R> {
                 protocol,
             } => {
                 let address = self.expression(address, env)?;
+                if let Value::Object(fields) = &address {
+                    if *transport != crate::ast::Transport::Udp || protocol.is_some() {
+                        return Err(
+                            self.error("bind configuration requires UDP without a protocol")
+                        );
+                    }
+                    if fields.len() != 1 || !fields.contains_key("bind") {
+                        return Err(
+                            self.error("UDP configuration requires exactly one 'bind' field")
+                        );
+                    }
+                    let Value::String(address) = &fields["bind"] else {
+                        return Err(self.error("UDP bind address must be a string"));
+                    };
+                    return self
+                        .runtime
+                        .bind_udp(address)
+                        .map_err(|message| self.error(message));
+                }
                 let Value::String(address) = address else {
                     return Err(self.error("connection address must be a string"));
                 };

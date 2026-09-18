@@ -14,6 +14,7 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 enum Socket {
     Tcp(TcpStream),
     Udp(UdpSocket),
+    UnconnectedUdp(UdpSocket),
 }
 
 #[derive(Default)]
@@ -22,6 +23,27 @@ pub(super) struct TransportRuntime {
 }
 
 impl TransportRuntime {
+    fn insert(&mut self, socket: Socket) -> Result<Value, String> {
+        let id = NEXT_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .map_err(|_| "connection IDs exhausted")?;
+        self.sockets.insert(id, socket);
+        Ok(Value::Connection(ConnectionId(id)))
+    }
+
+    pub fn bind_udp(&mut self, address: &str) -> Result<Value, String> {
+        if self.sockets.len() >= 1024 {
+            return Err("runtime connection limit (1024) reached".into());
+        }
+        let socket = UdpSocket::bind(address).map_err(|e| format!("UDP bind failed: {e}"))?;
+        socket
+            .set_read_timeout(Some(TIMEOUT))
+            .map_err(|e| e.to_string())?;
+        socket
+            .set_write_timeout(Some(TIMEOUT))
+            .map_err(|e| e.to_string())?;
+        self.insert(Socket::UnconnectedUdp(socket))
+    }
     pub fn close(&mut self, connection: &Value) -> Result<(), String> {
         let Value::Connection(id) = connection else {
             return Err("close requires a connection".into());
@@ -71,11 +93,7 @@ impl TransportRuntime {
             })();
             match result {
                 Ok(socket) => {
-                    let id = NEXT_ID
-                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
-                        .map_err(|_| "connection IDs exhausted")?;
-                    self.sockets.insert(id, socket);
-                    return Ok(Value::Connection(ConnectionId(id)));
+                    return self.insert(socket);
                 }
                 Err(error) => last_error = format!("cannot connect: {error}"),
             }
@@ -100,8 +118,8 @@ impl TransportRuntime {
         destination: Option<&str>,
     ) -> Result<Value, String> {
         let socket = self.socket(connection)?;
-        if destination.is_some() {
-            return Err("TO requires an unconnected UDP socket; unconnected socket construction is not implemented".into());
+        if destination.is_some() && !matches!(socket, Socket::UnconnectedUdp(_)) {
+            return Err("TO requires an unconnected UDP socket".into());
         }
         let bytes = match data {
             Value::String(text) => text.as_bytes(),
@@ -109,6 +127,16 @@ impl TransportRuntime {
             _ => return Err("SEND data must be a string or bytes".into()),
         };
         match socket {
+            Socket::UnconnectedUdp(socket) => {
+                let destination =
+                    destination.ok_or("unconnected UDP SEND requires TO destination")?;
+                let count = socket
+                    .send_to(bytes, destination)
+                    .map_err(|e| format!("UDP SEND TO failed: {e}"))?;
+                if count != bytes.len() {
+                    return Err("UDP SEND did not send the complete datagram".into());
+                }
+            }
             Socket::Tcp(socket) => socket
                 .write_all(bytes)
                 .map_err(|e| format!("TCP SEND failed (data may have been partially sent): {e}"))?,
@@ -129,6 +157,16 @@ impl TransportRuntime {
         // Large enough for a complete UDP datagram; TCP still returns arbitrary chunks.
         let mut bytes = vec![0; 65535];
         let count = match socket {
+            Socket::UnconnectedUdp(socket) => {
+                let (count, address) = socket
+                    .recv_from(&mut bytes)
+                    .map_err(|e| format!("UDP RECEIVE failed: {e}"))?;
+                bytes.truncate(count);
+                return Ok(Value::Object(BTreeMap::from([
+                    ("data".into(), Value::Bytes(bytes)),
+                    ("address".into(), Value::String(address.to_string())),
+                ])));
+            }
             Socket::Tcp(socket) => {
                 let count = loop {
                     match socket.read(&mut bytes) {
