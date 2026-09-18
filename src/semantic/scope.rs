@@ -22,8 +22,12 @@ pub(super) struct Scopes {
 
 impl Scopes {
     pub fn new() -> Self {
+        let mut builtins = HashMap::from([("print".into(), Symbol::Builtin)]);
+        for builtin in crate::runtime::Builtin::ALL {
+            builtins.insert(builtin.name().into(), Symbol::Function { arity: 1 });
+        }
         Self {
-            stack: vec![HashMap::from([("print".into(), Symbol::Builtin)])],
+            stack: vec![builtins],
         }
     }
 

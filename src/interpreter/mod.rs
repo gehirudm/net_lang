@@ -80,6 +80,14 @@ pub fn execute_with_limits(
         in_parallel_worker: false,
     };
     let mut env = vec![HashMap::from([("print".into(), 0)]), HashMap::new()];
+    for builtin in crate::runtime::Builtin::ALL {
+        let id = interpreter.bindings.len();
+        interpreter.bindings.push(Binding {
+            value: Some(Value::Builtin(builtin)),
+            mutable: false,
+        });
+        env[0].insert(builtin.name().into(), id);
+    }
     let result = (|| {
         // Reject an invalid entry point before top-level side effects.
         if program.statements.iter().any(|stmt| matches!(stmt, Stmt::Function { name, parameters, .. } if name == "main" && !parameters.is_empty())) {
@@ -331,6 +339,9 @@ impl<R: Runtime> Interpreter<'_, R> {
 
     fn call(&mut self, callee: Value, arguments: Vec<Value>) -> Result<Value> {
         match callee {
+            Value::Builtin(builtin) => builtin
+                .call(arguments)
+                .map_err(|message| self.error(message)),
             Value::Print => {
                 let text = arguments
                     .iter()

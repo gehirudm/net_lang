@@ -136,6 +136,17 @@ impl<R: Runtime> Interpreter<'_, R> {
             Expr::Index { object, index } => {
                 let object = self.expression(object, env)?;
                 let index = self.expression(index, env)?;
+                if let Value::Bytes(bytes) = &object {
+                    let Value::Integer(index) = index else {
+                        return Err(self.error("byte index must be an integer"));
+                    };
+                    let index = usize::try_from(index)
+                        .map_err(|_| self.error("byte index must be nonnegative"))?;
+                    let byte = bytes
+                        .get(index)
+                        .ok_or_else(|| self.error("byte index out of bounds"))?;
+                    return Ok(Value::Integer(i64::from(*byte)));
+                }
                 self.get(&object, &Selector::Index(index))
                     .map_err(|m| self.error(m))?
                     .clone()

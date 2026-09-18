@@ -168,6 +168,7 @@ The first pass implements these rules:
   built-in bindings cannot be reassigned, though they may be shadowed.
 - `return` requires an enclosing function.
 - Calls to directly named user functions must supply the declared argument count.
+  Direct calls to the byte built-ins require exactly one argument.
   The built-in `print` is recognized, with no argument-count restriction in this
   initial pass. Signatures of dynamic callees, including variables holding
   functions, are not inferred yet.
@@ -345,8 +346,15 @@ The byte-oriented contract is:
   port and connect to the supplied peer; this is not a reliability handshake.
   Maximum outgoing datagram size depends on the OS; oversized sends are errors.
 - Bytes can be stored, compared, printed, and sent again without UTF-8 decoding.
-  Printing uses `bytes[255, 0, ...]`. Byte literals, indexing, and explicit text
-  decoding APIs are future library work; binary values are not implicitly text.
+  Printing uses `bytes[255, 0, ...]`. Binary values are not implicitly text.
+  `bytes([0, 255])` constructs bytes from integers in 0..255;
+  `encode_utf8(text)` and `decode_utf8(data)` perform explicit conversion.
+  Decoding rejects invalid or incomplete UTF-8, reporting the first invalid byte
+  offset. `byte_len(data)` counts bytes; `data[index]` reads an integer byte.
+  `left + right` joins two byte values without changing either input. Byte
+  indexing is read-only. Join TCP chunks before decoding split UTF-8 characters.
+  These one-argument built-ins can be shadowed like `print`; aliases retain
+  runtime argument checks. No byte literal syntax or implicit framing is added.
 - Connection copies alias the same opaque handle. A runtime owns its sockets
   until it is dropped, with a 1,024-connection limit. Explicit close and earlier
   resource reclamation remain future work. Parallel workers must open their own
@@ -916,7 +924,7 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [x] Connected UDP runtime with datagram receives
 - [ ] TCP server/listener runtime (syntax TBD)
 - [ ] Unconnected UDP construction and destination-aware sends
-- [ ] Byte construction, indexing, and explicit text decoding APIs
+- [x] Byte construction, read-only indexing, concatenation, length, and explicit UTF-8 conversion
 - [ ] Explicit connection close and configurable transport deadlines
 - [ ] WebSocket runtime
 - [ ] Standard library

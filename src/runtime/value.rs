@@ -22,6 +22,7 @@ pub enum Value {
     Object(BTreeMap<String, Value>),
     Function(FunctionId),
     Print,
+    Builtin(super::Builtin),
 }
 
 impl Value {
@@ -37,7 +38,7 @@ impl Value {
             Self::Duration(_) => "duration",
             Self::Array(_) => "array",
             Self::Object(_) => "object",
-            Self::Function(_) | Self::Print => "function",
+            Self::Function(_) | Self::Print | Self::Builtin(_) => "function",
         }
     }
 }
@@ -53,7 +54,7 @@ impl fmt::Display for Value {
             Self::Boolean(v) => write!(f, "{v}"),
             Self::Null => f.write_str("null"),
             Self::Duration(v) => write!(f, "{v}ms"),
-            Self::Function(_) | Self::Print => f.write_str("<function>"),
+            Self::Function(_) | Self::Print | Self::Builtin(_) => f.write_str("<function>"),
             Self::Array(values) => {
                 f.write_str("[")?;
                 for (i, value) in values.iter().enumerate() {

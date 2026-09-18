@@ -9,7 +9,7 @@ pub use error::{SemanticError, SemanticErrorKind};
 use scope::{Scopes, Symbol};
 
 /// Check an independently constructed or parsed AST, collecting all errors.
-/// Every call starts with fresh scopes and the built-in `print` binding.
+/// Every call starts with fresh scopes and the standard built-in bindings.
 pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
     let mut analyzer = Analyzer {
         scopes: Scopes::new(),

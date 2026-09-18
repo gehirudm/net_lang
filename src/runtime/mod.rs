@@ -1,5 +1,7 @@
 //! Host effects used by the interpreter and, later, compiled programs.
+mod builtin;
 mod http;
+pub use builtin::Builtin;
 mod transport;
 mod value;
 use crate::ast::{HttpMethod, Transport};

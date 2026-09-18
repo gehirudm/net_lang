@@ -1,0 +1,9 @@
+fn main() {
+    // A UTF-8 character may span TCP receive chunks.
+    let first = bytes([226, 130]);
+    let second = bytes([172]);
+    let joined = first + second;
+    print(decode_utf8(joined));
+    print(byte_len(joined), joined[0]);
+    print(encode_utf8("hello"));
+}

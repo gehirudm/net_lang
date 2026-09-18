@@ -48,6 +48,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                     | Value::Object(_)
                     | Value::Function(_)
                     | Value::Print
+                    | Value::Builtin(_)
                     | Value::Bytes(_)
                     | Value::Connection(_)
             ) || matches!(
@@ -56,6 +57,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                     | Value::Object(_)
                     | Value::Function(_)
                     | Value::Print
+                    | Value::Builtin(_)
                     | Value::Bytes(_)
                     | Value::Connection(_)
             ) {
@@ -64,6 +66,12 @@ impl<R: Runtime> Interpreter<'_, R> {
             return Ok(Value::String(format!("{left}{right}")));
         }
         match (left, right) {
+            (Value::Bytes(mut a), Value::Bytes(b)) if op == Op::Add => {
+                a.try_reserve(b.len())
+                    .map_err(|_| self.error("byte concatenation exceeds available capacity"))?;
+                a.extend(b);
+                Ok(Value::Bytes(a))
+            }
             (Value::Integer(a), Value::Integer(b)) => {
                 if matches!(op, Op::Divide | Op::Remainder) && b == 0 {
                     return Err(self.error("division by zero"));
