@@ -340,7 +340,7 @@ impl<R: Runtime> Interpreter<'_, R> {
     fn call(&mut self, callee: Value, arguments: Vec<Value>) -> Result<Value> {
         match callee {
             Value::Builtin(builtin) => builtin
-                .call(arguments)
+                .call(arguments, self.runtime)
                 .map_err(|message| self.error(message)),
             Value::Print => {
                 let text = arguments

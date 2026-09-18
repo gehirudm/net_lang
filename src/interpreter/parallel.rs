@@ -26,6 +26,9 @@ struct WorkerRuntime {
 }
 
 impl Runtime for WorkerRuntime {
+    fn close(&mut self, connection: &Value) -> std::result::Result<(), String> {
+        self.host.close(connection)
+    }
     fn print(&mut self, text: &str) -> std::result::Result<(), String> {
         let bytes = text
             .len()

@@ -168,7 +168,7 @@ The first pass implements these rules:
   built-in bindings cannot be reassigned, though they may be shadowed.
 - `return` requires an enclosing function.
 - Calls to directly named user functions must supply the declared argument count.
-  Direct calls to the byte built-ins require exactly one argument.
+  Direct calls to the byte built-ins and `close` require exactly one argument.
   The built-in `print` is recognized, with no argument-count restriction in this
   initial pass. Signatures of dynamic callees, including variables holding
   functions, are not inferred yet.
@@ -356,8 +356,11 @@ The byte-oriented contract is:
   These one-argument built-ins can be shadowed like `print`; aliases retain
   runtime argument checks. No byte literal syntax or implicit framing is added.
 - Connection copies alias the same opaque handle. A runtime owns its sockets
-  until it is dropped, with a 1,024-connection limit. Explicit close and earlier
-  resource reclamation remain future work. Parallel workers must open their own
+  until `close(conn)` or runtime drop, with a 1,024-open-connection limit.
+  `close(conn)` returns `null`, releases the socket immediately, and invalidates
+  all aliases. Repeated close, send, or receive on that handle reports an error.
+  It is a full close, not TCP half-close; it does not wait for the peer to process
+  sent data. Parallel workers must open and close their own
   connections; captured handles from another runtime are rejected.
 - Connect attempts and blocking socket reads/writes use five-second timeouts.
   DNS resolution is synchronous and outside that timeout; multiple addresses
@@ -925,7 +928,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] TCP server/listener runtime (syntax TBD)
 - [ ] Unconnected UDP construction and destination-aware sends
 - [x] Byte construction, read-only indexing, concatenation, length, and explicit UTF-8 conversion
-- [ ] Explicit connection close and configurable transport deadlines
+- [x] Explicit connection close with alias invalidation and capacity reclamation
+- [ ] Configurable transport deadlines
 - [ ] WebSocket runtime
 - [ ] Standard library
 - [ ] Module loader

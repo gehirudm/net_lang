@@ -22,6 +22,15 @@ pub(super) struct TransportRuntime {
 }
 
 impl TransportRuntime {
+    pub fn close(&mut self, connection: &Value) -> Result<(), String> {
+        let Value::Connection(id) = connection else {
+            return Err("close requires a connection".into());
+        };
+        self.sockets
+            .remove(&id.0)
+            .ok_or_else(|| "connection is closed or belongs to another runtime".to_string())?;
+        Ok(())
+    }
     pub fn connect(
         &mut self,
         transport: Transport,
@@ -79,7 +88,7 @@ impl TransportRuntime {
             return Err("SEND/RECEIVE requires a connection".into());
         };
         self.sockets.get_mut(&id.0).ok_or_else(|| {
-            "connection belongs to another runtime; create connections inside parallel workers"
+            "connection is closed or belongs to another runtime; create connections inside parallel workers"
                 .into()
         })
     }

@@ -12,6 +12,10 @@ pub use value::{ConnectionId, FunctionId, Value};
 pub trait Runtime {
     fn print(&mut self, text: &str) -> Result<(), String>;
 
+    fn close(&mut self, _connection: &Value) -> Result<(), String> {
+        Err("connection close is not supported by this runtime".into())
+    }
+
     /// Make an independent host for a parallel iteration. Worker print output
     /// is buffered by the interpreter and replayed through the parent's print.
     fn fork(&mut self) -> Result<Box<dyn Runtime + Send>, String> {
@@ -67,6 +71,9 @@ impl<W: Write> StandardRuntime<W> {
 }
 
 impl<W: Write> Runtime for StandardRuntime<W> {
+    fn close(&mut self, connection: &Value) -> Result<(), String> {
+        self.transport.close(connection)
+    }
     fn connect(
         &mut self,
         transport: Transport,

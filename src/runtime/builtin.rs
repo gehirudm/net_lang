@@ -1,20 +1,22 @@
 use super::Value;
 
-/// Pure byte helpers; no network effects or implicit text conversion.
+/// Standard helpers with explicit runtime dispatch for resource effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Builtin {
     Bytes,
     EncodeUtf8,
     DecodeUtf8,
     ByteLen,
+    Close,
 }
 
 impl Builtin {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Bytes,
         Self::EncodeUtf8,
         Self::DecodeUtf8,
         Self::ByteLen,
+        Self::Close,
     ];
 
     pub fn name(self) -> &'static str {
@@ -23,10 +25,15 @@ impl Builtin {
             Self::EncodeUtf8 => "encode_utf8",
             Self::DecodeUtf8 => "decode_utf8",
             Self::ByteLen => "byte_len",
+            Self::Close => "close",
         }
     }
 
-    pub fn call(self, arguments: Vec<Value>) -> Result<Value, String> {
+    pub fn call(
+        self,
+        arguments: Vec<Value>,
+        runtime: &mut impl super::Runtime,
+    ) -> Result<Value, String> {
         if arguments.len() != 1 {
             return Err(format!(
                 "function '{}' expects 1 argument(s), got {}",
@@ -36,6 +43,7 @@ impl Builtin {
         }
         let argument = arguments.into_iter().next().unwrap();
         match (self, argument) {
+            (Self::Close, connection) => runtime.close(&connection).map(|()| Value::Null),
             (Self::Bytes, Value::Array(values)) => values
                 .into_iter()
                 .map(|value| {
