@@ -1,0 +1,16 @@
+// A complete TCP exchange in one process, using an OS-assigned loopback port.
+fn main() {
+    let listener = TCP { listen: "127.0.0.1:0" };
+    set_timeout(listener, 1s);
+    let client = TCP local_address(listener);
+    let peer = accept(listener);
+    close(listener);
+
+    // One-byte messages keep this demonstration independent of TCP chunking.
+    client SEND "A";
+    print(decode_utf8(peer.connection RECEIVE));
+    peer.connection SEND "B";
+    print(decode_utf8(client RECEIVE));
+    close(peer.connection);
+    close(client);
+}

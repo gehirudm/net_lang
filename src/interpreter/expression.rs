@@ -30,23 +30,28 @@ impl<R: Runtime> Interpreter<'_, R> {
             } => {
                 let address = self.expression(address, env)?;
                 if let Value::Object(fields) = &address {
-                    if *transport != crate::ast::Transport::Udp || protocol.is_some() {
+                    if protocol.is_some() {
                         return Err(
-                            self.error("bind configuration requires UDP without a protocol")
+                            self.error("listener/bind configuration does not support a protocol")
                         );
                     }
-                    if fields.len() != 1 || !fields.contains_key("bind") {
-                        return Err(
-                            self.error("UDP configuration requires exactly one 'bind' field")
-                        );
-                    }
-                    let Value::String(address) = &fields["bind"] else {
-                        return Err(self.error("UDP bind address must be a string"));
+                    let key = match transport {
+                        crate::ast::Transport::Udp => "bind",
+                        crate::ast::Transport::Tcp => "listen",
                     };
-                    return self
-                        .runtime
-                        .bind_udp(address)
-                        .map_err(|message| self.error(message));
+                    if fields.len() != 1 || !fields.contains_key(key) {
+                        return Err(self.error(format!(
+                            "connection configuration requires exactly one '{key}' field"
+                        )));
+                    }
+                    let Value::String(address) = &fields[key] else {
+                        return Err(self.error(format!("{key} address must be a string")));
+                    };
+                    let result = match transport {
+                        crate::ast::Transport::Udp => self.runtime.bind_udp(address),
+                        crate::ast::Transport::Tcp => self.runtime.listen_tcp(address),
+                    };
+                    return result.map_err(|message| self.error(message));
                 }
                 let Value::String(address) = address else {
                     return Err(self.error("connection address must be a string"));

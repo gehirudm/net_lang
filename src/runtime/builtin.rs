@@ -9,16 +9,20 @@ pub enum Builtin {
     ByteLen,
     Close,
     SetTimeout,
+    Accept,
+    LocalAddress,
 }
 
 impl Builtin {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::Bytes,
         Self::EncodeUtf8,
         Self::DecodeUtf8,
         Self::ByteLen,
         Self::Close,
         Self::SetTimeout,
+        Self::Accept,
+        Self::LocalAddress,
     ];
 
     pub fn name(self) -> &'static str {
@@ -29,6 +33,8 @@ impl Builtin {
             Self::ByteLen => "byte_len",
             Self::Close => "close",
             Self::SetTimeout => "set_timeout",
+            Self::Accept => "accept",
+            Self::LocalAddress => "local_address",
         }
     }
 
@@ -60,6 +66,10 @@ impl Builtin {
                 .map(|()| Value::Null);
         }
         match (self, argument) {
+            (Self::Accept, listener) => runtime.accept(&listener),
+            (Self::LocalAddress, connection) => {
+                runtime.local_address(&connection).map(Value::String)
+            }
             (Self::Close, connection) => runtime.close(&connection).map(|()| Value::Null),
             (Self::Bytes, Value::Array(values)) => values
                 .into_iter()

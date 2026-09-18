@@ -3,9 +3,9 @@ use crate::ast::Transport;
 use std::{
     collections::BTreeMap,
     io::{Read, Write},
-    net::{TcpStream, ToSocketAddrs, UdpSocket},
+    net::{TcpListener, TcpStream, ToSocketAddrs, UdpSocket},
     sync::atomic::{AtomicU64, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -15,6 +15,10 @@ enum Socket {
     Tcp(TcpStream),
     Udp(UdpSocket),
     UnconnectedUdp(UdpSocket),
+    Listener {
+        socket: TcpListener,
+        timeout: Duration,
+    },
 }
 
 #[derive(Default)]
@@ -23,12 +27,88 @@ pub(super) struct TransportRuntime {
 }
 
 impl TransportRuntime {
+    pub fn listen_tcp(&mut self, address: &str) -> Result<Value, String> {
+        self.ensure_capacity()?;
+        let socket = TcpListener::bind(address).map_err(|e| format!("TCP listen failed: {e}"))?;
+        socket
+            .set_nonblocking(true)
+            .map_err(|e| format!("cannot configure TCP listener: {e}"))?;
+        self.insert(Socket::Listener {
+            socket,
+            timeout: TIMEOUT,
+        })
+    }
+
+    pub fn local_address(&mut self, connection: &Value) -> Result<String, String> {
+        let address = match self.socket(connection)? {
+            Socket::Tcp(socket) => socket.local_addr(),
+            Socket::Udp(socket) | Socket::UnconnectedUdp(socket) => socket.local_addr(),
+            Socket::Listener { socket, .. } => socket.local_addr(),
+        };
+        address
+            .map(|address| address.to_string())
+            .map_err(|e| format!("cannot read local address: {e}"))
+    }
+
+    pub fn accept(&mut self, listener: &Value) -> Result<Value, String> {
+        self.ensure_capacity()?;
+        let Socket::Listener { socket, timeout } = self.socket(listener)? else {
+            return Err("accept requires a TCP listener".into());
+        };
+        let started = Instant::now();
+        let (stream, address) = loop {
+            if started.elapsed() >= *timeout {
+                return Err("TCP accept timed out".into());
+            }
+            match socket.accept() {
+                Ok(accepted) => break accepted,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    // Portable bounded wait without requiring an async runtime.
+                    std::thread::sleep(
+                        Duration::from_millis(5).min(timeout.saturating_sub(started.elapsed())),
+                    );
+                }
+                Err(error) => return Err(format!("TCP accept failed: {error}")),
+            }
+        };
+        // Explicitly establish stream mode rather than relying on OS inheritance.
+        stream
+            .set_nonblocking(false)
+            .map_err(|e| format!("cannot configure accepted TCP connection: {e}"))?;
+        stream
+            .set_read_timeout(Some(*timeout))
+            .map_err(|e| e.to_string())?;
+        stream
+            .set_write_timeout(Some(*timeout))
+            .map_err(|e| e.to_string())?;
+        let connection = self.insert(Socket::Tcp(stream))?;
+        Ok(Value::Object(BTreeMap::from([
+            ("connection".into(), connection),
+            ("address".into(), Value::String(address.to_string())),
+        ])))
+    }
+
+    fn ensure_capacity(&self) -> Result<(), String> {
+        if self.sockets.len() >= 1024 {
+            Err("runtime connection limit (1024) reached".into())
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn set_timeout(&mut self, connection: &Value, milliseconds: u64) -> Result<(), String> {
         if !(1..=86_400_000).contains(&milliseconds) {
             return Err("socket timeout must be from 1ms through 24h".into());
         }
         let timeout = Some(Duration::from_millis(milliseconds));
         let result = match self.socket(connection)? {
+            Socket::Listener {
+                timeout: current, ..
+            } => {
+                *current = Duration::from_millis(milliseconds);
+                Ok(())
+            }
             Socket::Tcp(socket) => socket
                 .set_read_timeout(timeout)
                 .and_then(|()| socket.set_write_timeout(timeout)),
@@ -49,9 +129,7 @@ impl TransportRuntime {
     }
 
     pub fn bind_udp(&mut self, address: &str) -> Result<Value, String> {
-        if self.sockets.len() >= 1024 {
-            return Err("runtime connection limit (1024) reached".into());
-        }
+        self.ensure_capacity()?;
         let socket = UdpSocket::bind(address).map_err(|e| format!("UDP bind failed: {e}"))?;
         socket
             .set_read_timeout(Some(TIMEOUT))
@@ -79,9 +157,7 @@ impl TransportRuntime {
         if protocol.is_some() {
             return Err("protocol-aware connections are not implemented".into());
         }
-        if self.sockets.len() >= 1024 {
-            return Err("runtime connection limit (1024) reached".into());
-        }
+        self.ensure_capacity()?;
         let addresses = address
             .to_socket_addrs()
             .map_err(|e| format!("cannot resolve connection address: {e}"))?;
@@ -120,7 +196,7 @@ impl TransportRuntime {
 
     fn socket(&mut self, connection: &Value) -> Result<&mut Socket, String> {
         let Value::Connection(id) = connection else {
-            return Err("SEND/RECEIVE requires a connection".into());
+            return Err("socket operation requires a connection or listener handle".into());
         };
         self.sockets.get_mut(&id.0).ok_or_else(|| {
             "connection is closed or belongs to another runtime; create connections inside parallel workers"
@@ -144,6 +220,9 @@ impl TransportRuntime {
             _ => return Err("SEND data must be a string or bytes".into()),
         };
         match socket {
+            Socket::Listener { .. } => {
+                return Err("SEND requires a connection, not a listener".into());
+            }
             Socket::UnconnectedUdp(socket) => {
                 let destination =
                     destination.ok_or("unconnected UDP SEND requires TO destination")?;
@@ -174,6 +253,9 @@ impl TransportRuntime {
         // Large enough for a complete UDP datagram; TCP still returns arbitrary chunks.
         let mut bytes = vec![0; 65535];
         let count = match socket {
+            Socket::Listener { .. } => {
+                return Err("RECEIVE requires a connection; use accept(listener) first".into());
+            }
             Socket::UnconnectedUdp(socket) => {
                 let (count, address) = socket
                     .recv_from(&mut bytes)

@@ -6,7 +6,7 @@ then uses a handwritten Rust recursive-descent parser to construct a Rust AST.
 An initial semantic-analysis pass checks lexical scopes and function usage.
 
 A tree-walking interpreter executes the core language, HTTP(S) requests, TCP
-clients, connected and unconnected UDP sockets, and bounded parallel iteration with isolated workers.
+clients/listeners, connected and unconnected UDP sockets, and bounded parallel iteration with isolated workers.
 
 ## Build and use
 
@@ -168,7 +168,8 @@ The first pass implements these rules:
   built-in bindings cannot be reassigned, though they may be shadowed.
 - `return` requires an enclosing function.
 - Calls to directly named user functions must supply the declared argument count.
-  Direct calls to the byte built-ins and `close` require exactly one argument.
+  Direct calls to the byte built-ins, `close`, `accept`, and `local_address`
+  require exactly one argument.
   `set_timeout` requires two arguments: a connection and a duration.
   The built-in `print` is recognized, with no argument-count restriction in this
   initial pass. Signatures of dynamic callees, including variables holding
@@ -330,7 +331,7 @@ assignment; nested sends require parentheses. Connection addresses accept
 expressions; use `(TCP address) RECEIVE` when receiving directly from a new
 connection. `TO` remains provisional syntax.
 
-The standard runtime executes TCP clients and connected/unconnected UDP sockets.
+The standard runtime executes TCP clients/listeners and connected/unconnected UDP sockets.
 `using Login` is parsed but rejected until protocol support is implemented.
 `TO` requires an unconnected UDP socket. Address and destination values must be
 strings. Semantic analysis checks operand names;
@@ -388,10 +389,43 @@ The byte-oriented contract is:
   timeouts, not total request deadlines. Failed sends may have sent some bytes;
   the runtime does not retry them automatically.
 
-Protocol resolution, framing, typed packets, typed receives, server/listener
-syntax, end-to-end deadlines, and static transport capability
+Protocol resolution, framing, typed packets, typed receives, end-to-end deadlines,
+and static transport capability
 checks remain future work. Loopback tests cover binary traffic, EOF, datagram
 boundaries, timeouts, socket cleanup, and independent parallel connections.
+
+### TCP listeners
+
+TCP listening uses an initial object configuration form:
+
+```netlang
+let listener = TCP { listen: "127.0.0.1:9000" };
+set_timeout(listener, 30s);
+let peer = accept(listener);
+print(peer.address);
+peer.connection SEND "hello";
+close(peer.connection);
+close(listener);
+```
+
+Only a string-valued `listen` field is accepted. `accept` returns an object with
+`connection` and numeric peer `address` fields; it defaults to a five-second
+timeout. `set_timeout(listener, duration)` changes subsequent accept waits and
+the initial read/write timeouts of newly accepted streams. Existing streams
+retain their own timeout. Closing a listener leaves its accepted streams open.
+`SEND` and `RECEIVE` reject listener handles: accept a connection first.
+
+`local_address(handle)` returns the bound local address of a listener, TCP
+stream, or UDP socket, including the OS-assigned port when bound to port `0`.
+Wildcard addresses describe the binding, not necessarily an address a remote
+peer can connect to. Listeners and streams share the runtime's 1,024-handle
+limit and worker ownership rules. Parallel workers cannot accept on a captured
+parent listener. This initial serial accept model does not add task spawning,
+shared listeners, half-close, or protocol framing.
+
+Run `cargo run -- run examples/tcp_loopback.net` for a complete local exchange
+without an external server. Server declaration and route syntax remain separate
+future language work.
 
 ## Architecture
 
@@ -637,8 +671,8 @@ its syntax changes, or its priority is revised.
 
 - [ ] **TCP connections**
 
-  The basic client form below is implemented; protocol-aware connections and
-  server support remain planned.
+  Basic clients and `TCP { listen: address }` listeners are implemented;
+  protocol-aware connections remain planned.
 
   ```netlang
   let conn = TCP "example.com:9000";
@@ -661,7 +695,8 @@ its syntax changes, or its priority is revised.
   let result = conn RECEIVE;
   ```
 
-  TCP server and listening syntax is **TBD**. No final syntax has been selected.
+  The initial listening form is `TCP { listen: address }`, followed by
+  `accept(listener)`. Higher-level server declaration syntax remains future work.
 
 - [ ] **UDP communication**
 
@@ -835,7 +870,7 @@ semantics, the networking model, error handling, concurrency behavior, and
 runtime APIs can be tested before the compiler commits to a native backend. It
 already executes variables and expressions, functions, control flow, HTTP
 requests, and isolated parallel iteration. TCP, UDP, and `SEND` / `RECEIVE`
-execute through the standard runtime for TCP clients and connected/unconnected UDP sockets.
+execute through the standard runtime for TCP clients/listeners and connected/unconnected UDP sockets.
 Protocol-aware transport execution and additional concurrency primitives remain planned.
 
 #### Phase 3 — Intermediate Representation
@@ -958,7 +993,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [x] Initial transport-specific runtime implementation with byte values
 - [x] TCP client runtime with unframed byte streams
 - [x] Connected UDP runtime with datagram receives
-- [ ] TCP server/listener runtime (syntax TBD)
+- [x] Initial TCP listener runtime with `accept` and bounded accept waits
+- [x] Local address queries for listeners and TCP/UDP sockets
 - [x] Unconnected UDP construction, sender-aware receives, and destination-aware sends
 - [x] Byte construction, read-only indexing, concatenation, length, and explicit UTF-8 conversion
 - [x] Explicit connection close with alias invalidation and capacity reclamation

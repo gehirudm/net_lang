@@ -26,6 +26,15 @@ struct WorkerRuntime {
 }
 
 impl Runtime for WorkerRuntime {
+    fn listen_tcp(&mut self, address: &str) -> std::result::Result<Value, String> {
+        self.host.listen_tcp(address)
+    }
+    fn accept(&mut self, listener: &Value) -> std::result::Result<Value, String> {
+        self.host.accept(listener)
+    }
+    fn local_address(&mut self, connection: &Value) -> std::result::Result<String, String> {
+        self.host.local_address(connection)
+    }
     fn set_timeout(
         &mut self,
         connection: &Value,
