@@ -40,7 +40,7 @@ fn run(args: Vec<std::ffi::OsString>, output: &mut impl Write) -> Result<String,
     } else {
         let program = Parser::new(tokens)
             .and_then(|mut parser| parser.parse_program())
-            .map_err(|e| diagnostic::render(&filename, &source, e.line, e.column, &e.message))?;
+            .map_err(|e| diagnostic::render_span(&filename, &source, e.span, &e.message))?;
         if args[0] == "check" {
             semantic::analyze(&program).map_err(|errors| {
                 errors

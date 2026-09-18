@@ -20,6 +20,9 @@ impl Parser {
                 message: "token stream must end with a single EOF token".into(),
                 line,
                 column,
+                span: tokens
+                    .last()
+                    .map_or(crate::source::Span::point(line, column), Token::span),
             });
         }
         Ok(Self { tokens, current: 0 })
@@ -66,6 +69,7 @@ impl Parser {
             message: message.into(),
             line: token.line,
             column: token.column,
+            span: token.span(),
         }
     }
 }

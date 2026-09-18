@@ -132,6 +132,23 @@ pub struct Token {
     pub column: usize,
 }
 
+impl Token {
+    pub fn span(&self) -> crate::source::Span {
+        let start = crate::source::Position {
+            line: self.line,
+            column: self.column,
+        };
+        crate::source::Span::from_text(
+            start,
+            if self.kind == TokenKind::Eof {
+                ""
+            } else {
+                &self.lexeme
+            },
+        )
+    }
+}
+
 impl TokenKind {
     pub fn name(self) -> &'static str {
         match self {

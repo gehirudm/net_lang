@@ -42,6 +42,7 @@ fn lexer_and_parser_errors_have_source_context() {
         std::env::temp_dir().join(format!("netlang-diagnostics-{}.net", std::process::id()));
     for (source, location, message) in [
         ("let x = 1", ":1:10", "expected ';'"),
+        ("let name unexpected;", ":1:10", "expected '='"),
         ("\n  @", ":2:3", "unexpected character"),
         ("/* never closed", ":1:1", "unterminated block comment"),
     ] {
@@ -53,6 +54,9 @@ fn lexer_and_parser_errors_have_source_context() {
         assert!(error.contains(location), "{error}");
         assert!(error.contains(message), "{error}");
         assert!(error.contains('^'));
+        if source == "let name unexpected;" {
+            assert!(error.contains("^~~~~~~~~~"), "{error}");
+        }
         assert!(error.contains(source.lines().last().unwrap()));
     }
     std::fs::remove_file(path).unwrap();

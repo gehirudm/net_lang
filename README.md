@@ -440,6 +440,7 @@ source → Flex scanner (C) → C bridge → safe Rust Lexer → Rust Parser →
 - `src/lexer/ffi.rs`: all unsafe Rust, scanner destruction, copied token text,
   and terminal EOF/error handling.
 - `src/lexer/token.rs`: token kinds, lexemes, and source positions.
+- `src/source.rs`: shared half-open spans and one-based byte positions.
 - `src/parser/`: expression precedence, statements, and located errors.
 - `src/ast/`: lexer-independent AST types and tree formatting.
 - `src/semantic/`: lexical symbol tables, name resolution, and semantic errors.
@@ -476,10 +477,14 @@ the host process. The CLI reports that error and exits unsuccessfully.
 and returns `Result<(), Vec<SemanticError>>`, starting with fresh scopes for each
 program.
 
-Locations are one-based lines and UTF-8 **byte** columns. Diagnostics convert the
-source prefix to characters and expand tabs to four spaces for a basic caret.
-Full source spans and display-width handling for wide/combining characters are
-future improvements.
+Locations are one-based lines and UTF-8 **byte** columns. `Token::span()` gives a
+half-open range over raw source text; `ParseError::span` preserves that range
+alongside its existing start line/column fields. Parser diagnostics underline
+the whole unexpected token; EOF errors retain an insertion caret. Multiline
+ranges show the first source line and an end-position note. Diagnostics convert
+byte positions to character columns and expand tabs to four spaces. Spans on
+AST nodes, semantic/runtime source locations, and display-width handling for
+wide/combining characters remain future improvements.
 
 ## Development
 
@@ -1003,7 +1008,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] WebSocket runtime
 - [ ] Standard library
 - [ ] Module loader
-- [ ] Improved source spans and diagnostics
+- [x] Shared source spans, token ranges, and full-token parser diagnostics
+- [ ] AST spans and source-located semantic/runtime diagnostics
 - [ ] Net-lang intermediate representation (IR)
 - [ ] Backend abstraction
 - [ ] Native code generation backend
