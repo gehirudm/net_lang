@@ -169,6 +169,7 @@ The first pass implements these rules:
 - `return` requires an enclosing function.
 - Calls to directly named user functions must supply the declared argument count.
   Direct calls to the byte built-ins and `close` require exactly one argument.
+  `set_timeout` requires two arguments: a connection and a duration.
   The built-in `print` is recognized, with no argument-count restriction in this
   initial pass. Signatures of dynamic callees, including variables holding
   functions, are not inferred yet.
@@ -378,13 +379,17 @@ The byte-oriented contract is:
   sent data. Parallel workers must open and close their own
   connections; captured handles from another runtime are rejected.
 - Connect attempts and blocking socket reads/writes use five-second timeouts.
+  `set_timeout(conn, 250ms)` changes subsequent read/write timeouts on that socket
+  and all its aliases, returning `null`. It accepts durations from 1ms through
+  1440m (24 hours); zero does not disable timeouts. This works for TCP and both
+  UDP modes, and respects runtime ownership and closed-handle checks.
   DNS resolution is synchronous and outside that timeout; multiple addresses
   and partial TCP writes can take longer overall. These are per-operation OS
   timeouts, not total request deadlines. Failed sends may have sent some bytes;
   the runtime does not retry them automatically.
 
 Protocol resolution, framing, typed packets, typed receives, server/listener
-syntax, configurable deadlines, and static transport capability
+syntax, end-to-end deadlines, and static transport capability
 checks remain future work. Loopback tests cover binary traffic, EOF, datagram
 boundaries, timeouts, socket cleanup, and independent parallel connections.
 
@@ -943,7 +948,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [x] Unconnected UDP construction, sender-aware receives, and destination-aware sends
 - [x] Byte construction, read-only indexing, concatenation, length, and explicit UTF-8 conversion
 - [x] Explicit connection close with alias invalidation and capacity reclamation
-- [ ] Configurable transport deadlines
+- [x] Configurable socket read/write timeouts with `set_timeout`
+- [ ] End-to-end transport deadlines, including DNS and connection setup
 - [ ] WebSocket runtime
 - [ ] Standard library
 - [ ] Module loader

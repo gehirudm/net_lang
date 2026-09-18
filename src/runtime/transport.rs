@@ -23,6 +23,23 @@ pub(super) struct TransportRuntime {
 }
 
 impl TransportRuntime {
+    pub fn set_timeout(&mut self, connection: &Value, milliseconds: u64) -> Result<(), String> {
+        if !(1..=86_400_000).contains(&milliseconds) {
+            return Err("socket timeout must be from 1ms through 24h".into());
+        }
+        let timeout = Some(Duration::from_millis(milliseconds));
+        let result = match self.socket(connection)? {
+            Socket::Tcp(socket) => socket
+                .set_read_timeout(timeout)
+                .and_then(|()| socket.set_write_timeout(timeout)),
+            Socket::Udp(socket) | Socket::UnconnectedUdp(socket) => socket
+                .set_read_timeout(timeout)
+                .and_then(|()| socket.set_write_timeout(timeout)),
+        };
+        result.map_err(|e| {
+            format!("cannot set socket timeout (read timeout may already be updated): {e}")
+        })
+    }
     fn insert(&mut self, socket: Socket) -> Result<Value, String> {
         let id = NEXT_ID
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))

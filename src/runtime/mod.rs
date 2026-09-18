@@ -10,6 +10,9 @@ pub use value::{ConnectionId, FunctionId, Value};
 
 /// Embedders can supply deterministic effects for tests or another runtime.
 pub trait Runtime {
+    fn set_timeout(&mut self, _connection: &Value, _milliseconds: u64) -> Result<(), String> {
+        Err("socket timeout configuration is not supported by this runtime".into())
+    }
     fn bind_udp(&mut self, _address: &str) -> Result<Value, String> {
         Err("unconnected UDP is not supported by this runtime".into())
     }
@@ -74,6 +77,9 @@ impl<W: Write> StandardRuntime<W> {
 }
 
 impl<W: Write> Runtime for StandardRuntime<W> {
+    fn set_timeout(&mut self, connection: &Value, milliseconds: u64) -> Result<(), String> {
+        self.transport.set_timeout(connection, milliseconds)
+    }
     fn bind_udp(&mut self, address: &str) -> Result<Value, String> {
         self.transport.bind_udp(address)
     }

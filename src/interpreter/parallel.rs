@@ -26,6 +26,13 @@ struct WorkerRuntime {
 }
 
 impl Runtime for WorkerRuntime {
+    fn set_timeout(
+        &mut self,
+        connection: &Value,
+        milliseconds: u64,
+    ) -> std::result::Result<(), String> {
+        self.host.set_timeout(connection, milliseconds)
+    }
     fn bind_udp(&mut self, address: &str) -> std::result::Result<Value, String> {
         self.host.bind_udp(address)
     }
