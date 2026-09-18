@@ -449,6 +449,20 @@ future improvements.
 
 ## Development
 
+[GitHub Actions CI](.github/workflows/ci.yml) runs on pushes, pull requests,
+and manual dispatches. Ubuntu 24.04 and macOS 15 run the complete debug and
+release test suites, including doctests and loopback networking tests, plus CLI
+smoke checks. A separate Ubuntu job checks formatting, strict Clippy, and workflow
+syntax with actionlint. Builds use stable Rust and the committed Cargo.lock
+(`--locked`), with Flex, C tools, and CMake available on each runner.
+
+Actions are pinned to commit hashes and updated through weekly Dependabot PRs.
+CI uses read-only repository permissions, cancels superseded runs, and caches
+Cargo downloads/builds by OS, architecture, Rust version, and build inputs.
+Windows CI remains deferred until the native lexer build supports that toolchain.
+The workflows become active when these files are pushed to GitHub; branch
+protection settings are managed separately in the repository settings.
+
 ```sh
 cargo fmt --check
 cargo test

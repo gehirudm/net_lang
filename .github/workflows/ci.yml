@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  CARGO_INCREMENTAL: "0"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  quality:
+    name: Formatting, Clippy, and workflow lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flex build-essential cmake pkg-config
+      - name: Install stable Rust and quality tools
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+      - name: Check Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flex build-essential cmake pkg-config
+      - name: Check macOS build dependencies
+        if: runner.os == 'macOS'
+        run: |
+          # Exercise Apple's Flex and Clang, as in local development.
+          /usr/bin/flex --version
+          /usr/bin/clang --version
+          test -x /usr/bin/ar
+          command -v cmake >/dev/null || brew install cmake
+          echo 'FLEX=/usr/bin/flex' >> "$GITHUB_ENV"
+          echo 'CC=/usr/bin/clang' >> "$GITHUB_ENV"
+          echo 'AR=/usr/bin/ar' >> "$GITHUB_ENV"
+      - name: Install stable Rust
+        id: rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          echo "version=$(rustc --version)" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo downloads and builds
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ matrix.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock', 'build.rs', 'lexer/**') }}-${{ github.sha }}
+          restore-keys: |
+            cargo-${{ matrix.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock', 'build.rs', 'lexer/**') }}-
+      - name: Test debug build (including doctests)
+        run: cargo test --locked --all-features
+      - name: Test release build (including doctests)
+        run: cargo test --locked --all-features --release
+      - name: Smoke test the CLI
+        run: |
+          cargo run --locked --release -- tokens examples/complete.net
+          cargo run --locked --release -- ast examples/complete.net
+          cargo run --locked --release -- check examples/complete.net
+          cargo run --locked --release -- run examples/bytes.net
