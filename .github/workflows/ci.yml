@@ -72,9 +72,11 @@ jobs:
           /usr/bin/clang --version
           test -x /usr/bin/ar
           command -v cmake >/dev/null || brew install cmake
-          echo 'FLEX=/usr/bin/flex' >> "$GITHUB_ENV"
-          echo 'CC=/usr/bin/clang' >> "$GITHUB_ENV"
-          echo 'AR=/usr/bin/ar' >> "$GITHUB_ENV"
+          {
+            echo 'FLEX=/usr/bin/flex'
+            echo 'CC=/usr/bin/clang'
+            echo 'AR=/usr/bin/ar'
+          } >> "$GITHUB_ENV"
       - name: Install stable Rust
         id: rust
         run: |
