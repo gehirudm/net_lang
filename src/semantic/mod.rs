@@ -1,8 +1,9 @@
-//! Lexical name resolution and structural semantic checks for the untyped AST.
-//! This pass does not execute code or infer types.
+//! Lexical name resolution, structural checks, and optional type contracts.
+//! This pass does not execute code or infer constraints on unannotated bindings.
 
 mod error;
 mod scope;
+mod types;
 
 use crate::ast::{Expr, Program, Stmt};
 pub use error::{SemanticError, SemanticErrorKind};
@@ -156,10 +157,20 @@ impl Analyzer {
                 self.statement(statement);
                 self.current_span = previous_span;
             }
-            Stmt::Let { name, value } => {
+            Stmt::Let {
+                name,
+                annotation,
+                value,
+            } => {
                 // An initializer may refer to an outer binding of the same name.
                 self.expression(value);
-                self.declare(name, Symbol::Variable);
+                let annotation = annotation
+                    .as_ref()
+                    .and_then(|annotation| self.resolve_type(annotation));
+                if let Some(expected) = annotation {
+                    self.check_type(value, expected);
+                }
+                self.declare(name, Symbol::Variable { annotation });
             }
             Stmt::Expression(expr) => self.expression(expr),
             Stmt::Block(_) => self.scoped_body("block", stmt),
@@ -335,6 +346,13 @@ impl Analyzer {
                 self.check_parallel_assignment(target);
                 self.current_span = previous;
                 self.expression(value);
+                if let Expr::Identifier(name) = target.unspanned()
+                    && let Some(Symbol::Variable {
+                        annotation: Some(expected),
+                    }) = self.scopes.resolve(name)
+                {
+                    self.check_type(value, expected);
+                }
             }
             Expr::Call { callee, arguments } => {
                 self.expression(callee);

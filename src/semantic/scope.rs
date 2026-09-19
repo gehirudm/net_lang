@@ -2,16 +2,23 @@ use std::collections::{HashMap, hash_map::Entry};
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Symbol {
-    Variable,
+    Variable {
+        annotation: Option<crate::ast::PrimitiveType>,
+    },
     Parameter,
     LoopVariable,
-    Function { arity: usize },
+    Function {
+        arity: usize,
+    },
     Builtin,
 }
 
 impl Symbol {
     pub fn is_mutable(self) -> bool {
-        matches!(self, Self::Variable | Self::Parameter | Self::LoopVariable)
+        matches!(
+            self,
+            Self::Variable { .. } | Self::Parameter | Self::LoopVariable
+        )
     }
 }
 

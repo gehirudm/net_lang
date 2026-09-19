@@ -51,7 +51,17 @@ fn statement(stmt: &Stmt) -> Tree {
         Stmt::Located {
             statement: inner, ..
         } => statement(inner),
-        Stmt::Let { name, value } => Tree::new(format!("Let {name}"), vec![expression(value)]),
+        Stmt::Let {
+            name,
+            annotation,
+            value,
+        } => {
+            let suffix = annotation
+                .as_ref()
+                .map(|a| format!(": {}", a.name))
+                .unwrap_or_default();
+            Tree::new(format!("Let {name}{suffix}"), vec![expression(value)])
+        }
         Stmt::Expression(expr) => Tree::new("Expression", vec![expression(expr)]),
         Stmt::Block(statements) => Tree::new("Block", statements.iter().map(statement).collect()),
         Stmt::Function {

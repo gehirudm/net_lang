@@ -1,6 +1,6 @@
 use super::{ParseError, Parser};
 use crate::{
-    ast::{MatchArm, Pattern, Program, Stmt},
+    ast::{MatchArm, Pattern, Program, Stmt, TypeAnnotation},
     lexer::TokenKind as K,
 };
 
@@ -34,10 +34,15 @@ impl Parser {
             let name = self
                 .consume(K::Identifier, "expected variable name")?
                 .lexeme;
+            let annotation = self.parse_annotation()?;
             self.consume(K::Equal, "expected '=' after variable name")?;
             let value = self.parse_expression()?;
             self.consume(K::Semicolon, "expected ';' after variable declaration")?;
-            Ok(Stmt::Let { name, value })
+            Ok(Stmt::Let {
+                name,
+                annotation,
+                value,
+            })
         } else {
             self.parse_statement()
         }
@@ -66,6 +71,16 @@ impl Parser {
             parameters,
             body,
         })
+    }
+    fn parse_annotation(&mut self) -> Result<Option<TypeAnnotation>, ParseError> {
+        if !self.matches(K::Colon) {
+            return Ok(None);
+        }
+        let token = self.consume(K::Identifier, "expected type name after ':'")?;
+        Ok(Some(TypeAnnotation {
+            span: self.spans.then(|| token.span()),
+            name: token.lexeme,
+        }))
     }
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         if self.matches(K::Break) || self.matches(K::Continue) {

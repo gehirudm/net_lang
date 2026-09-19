@@ -18,6 +18,7 @@ fn functions_variables_and_return() {
                 parameters: vec!["name".into()],
                 body: Box::new(Stmt::Block(vec![
                     Stmt::Let {
+                        annotation: None,
                         name: "x".into(),
                         value: Expr::Integer(42)
                     },

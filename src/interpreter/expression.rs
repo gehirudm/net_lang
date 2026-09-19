@@ -195,10 +195,12 @@ impl<R: Runtime> Interpreter<'_, R> {
                 }
                 let value = self.expression(value, env)?;
                 if selectors.is_empty() {
+                    self.check_binding_type(id, &value)?;
                     self.bindings[id].value = Some(value.clone());
                 } else {
                     let mut root = self.read(id)?;
                     Self::set(&mut root, &selectors, value.clone()).map_err(|m| self.error(m))?;
+                    self.check_binding_type(id, &root)?;
                     self.bindings[id].value = Some(root);
                 }
                 value

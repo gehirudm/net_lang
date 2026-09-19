@@ -13,6 +13,8 @@ pub enum SemanticErrorKind {
     BreakOutsideLoop,
     ContinueOutsideLoop,
     BreakAcrossParallel,
+    UnknownType,
+    TypeMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

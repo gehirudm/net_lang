@@ -185,7 +185,7 @@ The first pass implements these rules:
 
 Request URLs, request option values, object values, and all other expression
 positions are traversed. Property names and object keys are not variable uses.
-Request option validity, static types, callee types, match exhaustiveness, and
+Request option validity, general type inference, dynamic callee types, match exhaustiveness, and
 runtime initialization order are not checked yet. A successful check therefore
 does not guarantee that a program will run successfully.
 
@@ -194,6 +194,27 @@ context. `examples/match.net`
 is a syntax fragment
 using an undeclared `response`; it parses but intentionally fails semantic
 checking. The complete example declares that binding and passes.
+
+### Optional checked annotations
+
+Unannotated code stays dynamic, including bindings that change value types.
+Primitive `let` annotations opt into a checked contract:
+
+```netlang
+let port: int = 8080;
+let timeout: duration = 5s;
+let name: string = "Alice";
+let payload: bytes = encode_utf8(name);
+```
+
+The supported names are `int`, `float`, `bool`, `string`, `duration`, and `bytes`.
+These are ordinary identifiers outside annotation positions. `check` rejects
+unknown type names and provable initializer/reassignment mismatches. Dynamic
+values are checked when entering an annotated binding and on every later write,
+including writes through captured functions. No implicit numeric conversion is
+performed: `float` requires a float value. Unannotated collections remain
+heterogeneous; collection schemas, user-defined types, and function annotations
+are later work. A successful semantic check still cannot guarantee runtime success.
 
 ## Interpreter
 
@@ -559,7 +580,8 @@ its syntax changes, or its priority is revised.
 
 ### Language syntax
 
-- [ ] **Static type annotations**
+- [x] **Optional primitive annotations on `let` bindings**
+- [ ] **Function parameter and return annotations; richer type annotations**
 
   ```netlang
   let port: int = 8080;
@@ -1003,7 +1025,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [x] Interpreter transport host interfaces, verified with injected test runtimes
 - [x] Initial semantic analysis: names, declarations, assignments, returns, and direct-call arity
 - [x] Symbol tables and lexical scope checking
-- [ ] Static type checking
+- [x] Optional primitive binding contracts with conservative static checks and runtime enforcement
+- [ ] Function annotation checking and richer static types
 - [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [x] Core interpreter: values, functions, lexical scopes, control flow, and collections
@@ -1043,5 +1066,5 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Package manager
 
 The original v0.1 milestone covered the frontend. Development has now entered the
-interpreter phase. Static typing, imports, interpolation, IR, and compiled
+interpreter phase. Richer typing, imports, interpolation, IR, and compiled
 backends remain later work.

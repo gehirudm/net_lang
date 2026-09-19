@@ -22,6 +22,7 @@ pub enum Stmt {
     },
     Let {
         name: String,
+        annotation: Option<super::TypeAnnotation>,
         value: Expr,
     },
     Expression(Expr),

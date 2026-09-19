@@ -5,7 +5,7 @@ mod expression;
 mod operations;
 mod parallel;
 use crate::{
-    ast::{Expr, Pattern, Program, Stmt},
+    ast::{Expr, Pattern, PrimitiveType, Program, Stmt},
     runtime::{FunctionId, Runtime, Value},
     semantic,
 };
@@ -70,6 +70,7 @@ pub fn execute_with_limits(
         runtime,
         bindings: vec![Binding {
             value: Some(Value::Print),
+            annotation: None,
             mutable: false,
         }],
         functions: Vec::new(),
@@ -86,6 +87,7 @@ pub fn execute_with_limits(
         let id = interpreter.bindings.len();
         interpreter.bindings.push(Binding {
             value: Some(Value::Builtin(builtin)),
+            annotation: None,
             mutable: false,
         });
         env[0].insert(builtin.name().into(), id);
@@ -114,6 +116,7 @@ pub fn execute_with_limits(
 
 #[derive(Clone)]
 struct Binding {
+    annotation: Option<PrimitiveType>,
     value: Option<Value>,
     mutable: bool,
 }
@@ -167,7 +170,11 @@ impl<R: Runtime> Interpreter<'_, R> {
     }
     fn allocate(&mut self, value: Option<Value>, mutable: bool) -> usize {
         let id = self.bindings.len();
-        self.bindings.push(Binding { value, mutable });
+        self.bindings.push(Binding {
+            value,
+            mutable,
+            annotation: None,
+        });
         id
     }
     fn resolve(&self, env: &Environment, name: &str) -> Result<usize> {
@@ -176,6 +183,27 @@ impl<R: Runtime> Interpreter<'_, R> {
             .find_map(|scope| scope.get(name))
             .copied()
             .ok_or_else(|| self.error(format!("undefined name '{name}'")))
+    }
+    fn check_binding_type(&self, id: usize, value: &Value) -> Result<()> {
+        if let Some(expected) = self.bindings[id].annotation {
+            let valid = matches!(
+                (expected, value),
+                (PrimitiveType::Int, Value::Integer(_))
+                    | (PrimitiveType::Float, Value::Float(_))
+                    | (PrimitiveType::Bool, Value::Boolean(_))
+                    | (PrimitiveType::String, Value::String(_))
+                    | (PrimitiveType::Duration, Value::Duration(_))
+                    | (PrimitiveType::Bytes, Value::Bytes(_))
+            );
+            if !valid {
+                return Err(self.error(format!(
+                    "expected {}, got {}",
+                    expected.name(),
+                    value.type_name()
+                )));
+            }
+        }
+        Ok(())
     }
     fn read(&self, id: usize) -> Result<Value> {
         self.bindings[id]
@@ -190,7 +218,13 @@ impl<R: Runtime> Interpreter<'_, R> {
         let mut slots = Vec::with_capacity(statements.len());
         for stmt in statements {
             let slot = match stmt.unspanned() {
-                Stmt::Let { .. } => Some(self.allocate(None, true)),
+                Stmt::Let { annotation, .. } => {
+                    let id = self.allocate(None, true);
+                    self.bindings[id].annotation = annotation
+                        .as_ref()
+                        .and_then(|a| PrimitiveType::from_name(&a.name));
+                    Some(id)
+                }
                 Stmt::Function { name, .. } => {
                     let id = self.allocate(None, false);
                     env.last_mut().unwrap().insert(name.clone(), id);
@@ -231,9 +265,14 @@ impl<R: Runtime> Interpreter<'_, R> {
             self.current_span = stmt.span().or(previous_span);
             let result = (|| {
                 self.tick()?;
-                if let Stmt::Let { name, value } = stmt.unspanned() {
+                if let Stmt::Let { name, value, .. } = stmt.unspanned() {
+                    let span = value.span().or(self.current_span);
                     let value = self.expression(value, env)?;
                     let id = slot.unwrap();
+                    self.check_binding_type(id, &value).map_err(|mut error| {
+                        error.span = span;
+                        error
+                    })?;
                     self.bindings[id].value = Some(value);
                     env.last_mut().unwrap().insert(name.clone(), id);
                     Ok(Flow::Normal)

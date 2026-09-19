@@ -60,7 +60,7 @@ fn success_criterion_ast() {
         panic!()
     };
     assert!(
-        matches!(&statements[0], Stmt::Let { name, value: Expr::Array(urls) } if name == "urls" && urls.len() == 2)
+        matches!(&statements[0], Stmt::Let { name, value: Expr::Array(urls), .. } if name == "urls" && urls.len() == 2)
     );
     let Stmt::Parallel {
         variable,
@@ -82,6 +82,7 @@ fn success_criterion_ast() {
             url,
             config,
         },
+        ..
     } = &statements[0]
     else {
         panic!()
