@@ -1,23 +1,27 @@
 use std::collections::{HashMap, hash_map::Entry};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(super) enum Symbol {
     Variable {
         annotation: Option<crate::ast::PrimitiveType>,
     },
-    Parameter,
+    Parameter {
+        annotation: Option<crate::ast::PrimitiveType>,
+    },
     LoopVariable,
     Function {
         arity: usize,
+        parameters: Vec<Option<crate::ast::PrimitiveType>>,
+        return_type: Option<crate::ast::PrimitiveType>,
     },
     Builtin,
 }
 
 impl Symbol {
-    pub fn is_mutable(self) -> bool {
+    pub fn is_mutable(&self) -> bool {
         matches!(
             self,
-            Self::Variable { .. } | Self::Parameter | Self::LoopVariable
+            Self::Variable { .. } | Self::Parameter { .. } | Self::LoopVariable
         )
     }
 }
@@ -35,6 +39,8 @@ impl Scopes {
                 builtin.name().into(),
                 Symbol::Function {
                     arity: builtin.arity(),
+                    parameters: vec![],
+                    return_type: None,
                 },
             );
         }
@@ -76,6 +82,6 @@ impl Scopes {
             .iter()
             .enumerate()
             .rev()
-            .find_map(|(depth, scope)| scope.get(name).map(|symbol| (depth, *symbol)))
+            .find_map(|(depth, scope)| scope.get(name).map(|symbol| (depth, symbol.clone())))
     }
 }

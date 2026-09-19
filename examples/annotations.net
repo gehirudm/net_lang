@@ -1,0 +1,14 @@
+fn next_port(port: int) -> int {
+    return port + 1;
+}
+
+fn main() {
+    let port: int = 8080;
+    let wait: duration = 5s;
+    print(next_port(port), wait);
+
+    // Without an annotation, a binding remains dynamic.
+    let value = "ready";
+    value = true;
+    print(value);
+}

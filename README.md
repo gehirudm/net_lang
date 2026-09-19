@@ -87,8 +87,9 @@ the full [v0.1 success-criteria program](examples/complete.net).
 
 ## Syntax implemented
 
-- Untyped functions, calls, `let`, assignment, and optional return values.
-- Blocks, `if` / `else if` / `else`, `while`, and `for item in items`.
+- Functions, calls, `let`, assignment, and optional return values; optional
+  primitive annotations on bindings, parameters, and function returns.
+- Blocks, `if` / `else if` / `else`, `while`, `for item in items`, `break`, and `continue`.
 - Integers, floats, strings, booleans, null, arrays, and objects.
 - Property access, indexing, unary `!` and `-`, arithmetic, comparisons,
   equality, logical operators, and right-associative assignment.
@@ -99,7 +100,7 @@ the full [v0.1 success-criteria program](examples/complete.net).
 - Match patterns: integer, string, boolean, null, and `_`.
 - Line comments and non-nested block comments.
 
-Simple statements (`let`, assignment, calls, `return`, and other expressions)
+Simple statements (`let`, assignment, calls, `return`, `break`, `continue`, and other expressions)
 require semicolons. Block-based constructs do not require a trailing semicolon,
 as in the specification's examples. Lists of array elements, object fields,
 arguments, and parameters accept an optional trailing comma.
@@ -205,6 +206,10 @@ let port: int = 8080;
 let timeout: duration = 5s;
 let name: string = "Alice";
 let payload: bytes = encode_utf8(name);
+
+fn next_port(port: int) -> int {
+    return port + 1;
+}
 ```
 
 The supported names are `int`, `float`, `bool`, `string`, `duration`, and `bytes`.
@@ -212,9 +217,24 @@ These are ordinary identifiers outside annotation positions. `check` rejects
 unknown type names and provable initializer/reassignment mismatches. Dynamic
 values are checked when entering an annotated binding and on every later write,
 including writes through captured functions. No implicit numeric conversion is
-performed: `float` requires a float value. Unannotated collections remain
-heterogeneous; collection schemas, user-defined types, and function annotations
-are later work. A successful semantic check still cannot guarantee runtime success.
+performed: `float` requires a float value.
+
+Function parameters and return values may use the same optional annotations.
+Annotated parameters remain mutable but must keep their declared type; unannotated
+parameters remain dynamic. Direct calls check known argument and result types
+statically. Calls through function-valued variables also enforce contracts at
+runtime. Argument values are evaluated before runtime argument checks; an invalid
+argument prevents the function body from running. Returned dynamic values are
+checked before leaving the function, with its call stack and source location.
+Falling through a function returns `null`, which violates any currently supported
+return annotation. Missing-return path analysis is not implemented; fallthrough
+is checked at runtime. Explicit `return;` in an annotated function is a semantic
+error. Unannotated functions keep their existing behavior.
+
+Unannotated collections remain heterogeneous; collection schemas, user-defined
+types, and transport types are later work. A successful semantic check still
+cannot guarantee runtime success. Run [examples/annotations.net](examples/annotations.net)
+for a complete example.
 
 ## Interpreter
 
@@ -581,7 +601,8 @@ its syntax changes, or its priority is revised.
 ### Language syntax
 
 - [x] **Optional primitive annotations on `let` bindings**
-- [ ] **Function parameter and return annotations; richer type annotations**
+- [x] **Optional primitive function parameter and return annotations**
+- [ ] **Richer type annotations**, including user-defined response types
 
   ```netlang
   let port: int = 8080;
@@ -1026,7 +1047,8 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [x] Initial semantic analysis: names, declarations, assignments, returns, and direct-call arity
 - [x] Symbol tables and lexical scope checking
 - [x] Optional primitive binding contracts with conservative static checks and runtime enforcement
-- [ ] Function annotation checking and richer static types
+- [x] Optional primitive function contracts, including dynamic calls and returns
+- [ ] Richer static types and return-path analysis
 - [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [x] Core interpreter: values, functions, lexical scopes, control flow, and collections

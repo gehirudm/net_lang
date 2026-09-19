@@ -60,6 +60,7 @@ pub enum TokenKind {
     Using = 56,
     Break = 57,
     Continue = 58,
+    Arrow = 59,
 }
 impl TokenKind {
     pub(crate) fn from_raw(raw: i32) -> Option<Self> {
@@ -123,6 +124,7 @@ impl TokenKind {
             56 => Some(Self::Using),
             57 => Some(Self::Break),
             58 => Some(Self::Continue),
+            59 => Some(Self::Arrow),
             _ => None,
         }
     }
@@ -215,6 +217,7 @@ impl TokenKind {
             Self::Using => "USING",
             Self::Break => "BREAK",
             Self::Continue => "CONTINUE",
+            Self::Arrow => "ARROW",
         }
     }
 }

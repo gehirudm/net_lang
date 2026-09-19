@@ -16,6 +16,7 @@ fn functions_variables_and_return() {
             statements: vec![Stmt::Function {
                 name: "greet".into(),
                 parameters: vec!["name".into()],
+                return_annotation: None,
                 body: Box::new(Stmt::Block(vec![
                     Stmt::Let {
                         annotation: None,
@@ -96,7 +97,7 @@ fn empty_program_and_nested_blocks() {
     );
     let program = parse("fn f(a, b) { fn g() {} }").unwrap();
     assert!(
-        matches!(&program.statements[0], Stmt::Function { parameters, .. } if parameters == &["a", "b"])
+        matches!(&program.statements[0], Stmt::Function { parameters, .. } if parameters.iter().map(|p| p.name.as_str()).collect::<Vec<_>>() == ["a", "b"])
     );
 }
 #[test]

@@ -74,6 +74,7 @@
 ";" return NET_SEMICOLON;
 "." return NET_DOT;
 "=>" return NET_FAT_ARROW;
+"->" return NET_ARROW;
 [0-9]+(ms|s|m) return NET_DURATION;
 [0-9]+\.[0-9]+ return NET_FLOAT;
 [0-9]+ return NET_INTEGER;

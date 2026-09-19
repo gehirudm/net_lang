@@ -5,7 +5,7 @@ mod error;
 mod scope;
 mod types;
 
-use crate::ast::{Expr, Program, Stmt};
+use crate::ast::{Expr, PrimitiveType, Program, Stmt};
 pub use error::{SemanticError, SemanticErrorKind};
 use scope::{Scopes, Symbol};
 
@@ -20,6 +20,7 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
         parallel_boundaries: Vec::new(),
         current_span: None,
         loops: Vec::new(),
+        return_type: None,
     };
     analyzer.scopes.enter();
     analyzer.statements(&program.statements);
@@ -32,6 +33,7 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
 }
 
 struct Analyzer {
+    return_type: Option<PrimitiveType>,
     loops: Vec<LoopKind>,
     current_span: Option<crate::source::Span>,
     scopes: Scopes,
@@ -83,16 +85,28 @@ impl Analyzer {
         // mutually recursive functions. Variables are introduced in source order.
         for (i, stmt) in statements.iter().enumerate() {
             if let Stmt::Function {
-                name, parameters, ..
+                name,
+                parameters,
+                return_annotation,
+                ..
             } = stmt.unspanned()
             {
                 let previous_span = self.current_span;
                 self.current_span = stmt.span().or(previous_span);
                 self.context.push(format!("statement {}", i + 1));
+                let parameter_types = parameters
+                    .iter()
+                    .map(|p| p.annotation.as_ref().and_then(|a| self.resolve_type(a)))
+                    .collect();
+                let return_type = return_annotation
+                    .as_ref()
+                    .and_then(|a| self.resolve_type(a));
                 self.declare(
                     name,
                     Symbol::Function {
                         arity: parameters.len(),
+                        parameters: parameter_types,
+                        return_type,
                     },
                 );
                 self.context.pop();
@@ -177,6 +191,7 @@ impl Analyzer {
             Stmt::Function {
                 name,
                 parameters,
+                return_annotation,
                 body,
             } => {
                 self.context.push(format!("function '{name}'"));
@@ -184,11 +199,27 @@ impl Analyzer {
                 self.function_depth += 1;
                 // A function cannot transfer control to a caller's loop.
                 let enclosing_loops = std::mem::take(&mut self.loops);
+                // Names were validated when this declaration was hoisted.
+                let enclosing_return = std::mem::replace(
+                    &mut self.return_type,
+                    return_annotation
+                        .as_ref()
+                        .and_then(|a| PrimitiveType::from_name(&a.name)),
+                );
                 for parameter in parameters {
-                    self.declare(parameter, Symbol::Parameter);
+                    self.declare(
+                        &parameter.name,
+                        Symbol::Parameter {
+                            annotation: parameter
+                                .annotation
+                                .as_ref()
+                                .and_then(|a| PrimitiveType::from_name(&a.name)),
+                        },
+                    );
                 }
                 self.body_in_current_scope(body);
                 self.loops = enclosing_loops;
+                self.return_type = enclosing_return;
                 self.function_depth -= 1;
                 self.scopes.leave();
                 self.context.pop();
@@ -209,6 +240,9 @@ impl Analyzer {
                 }
                 if let Some(value) = value {
                     self.expression(value);
+                }
+                if let Some(expected) = self.return_type {
+                    self.check_type(value.as_ref().unwrap_or(&Expr::Null), expected);
                 }
             }
             Stmt::If {
@@ -347,9 +381,14 @@ impl Analyzer {
                 self.current_span = previous;
                 self.expression(value);
                 if let Expr::Identifier(name) = target.unspanned()
-                    && let Some(Symbol::Variable {
-                        annotation: Some(expected),
-                    }) = self.scopes.resolve(name)
+                    && let Some(
+                        Symbol::Variable {
+                            annotation: Some(expected),
+                        }
+                        | Symbol::Parameter {
+                            annotation: Some(expected),
+                        },
+                    ) = self.scopes.resolve(name)
                 {
                     self.check_type(value, expected);
                 }
@@ -357,7 +396,7 @@ impl Analyzer {
             Expr::Call { callee, arguments } => {
                 self.expression(callee);
                 if let Expr::Identifier(name) = callee.unspanned()
-                    && let Some(Symbol::Function { arity }) = self.scopes.resolve(name)
+                    && let Some(Symbol::Function { arity, .. }) = self.scopes.resolve(name)
                     && arity != arguments.len()
                 {
                     self.error(
@@ -370,6 +409,15 @@ impl Analyzer {
                 }
                 for argument in arguments {
                     self.expression(argument);
+                }
+                if let Expr::Identifier(name) = callee.unspanned()
+                    && let Some(Symbol::Function { parameters, .. }) = self.scopes.resolve(name)
+                {
+                    for (argument, expected) in arguments.iter().zip(parameters) {
+                        if let Some(expected) = expected {
+                            self.check_type(argument, expected);
+                        }
+                    }
                 }
             }
             Expr::Property { object, .. } => self.expression(object),

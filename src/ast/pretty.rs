@@ -67,14 +67,28 @@ fn statement(stmt: &Stmt) -> Tree {
         Stmt::Function {
             name,
             parameters,
+            return_annotation,
             body,
         } => {
             let mut children = vec![Tree::new(
                 "Parameters",
-                parameters.iter().map(Tree::leaf).collect(),
+                parameters
+                    .iter()
+                    .map(|parameter| {
+                        let label = match &parameter.annotation {
+                            Some(annotation) => format!("{}: {}", parameter.name, annotation.name),
+                            None => parameter.name.clone(),
+                        };
+                        Tree::leaf(label)
+                    })
+                    .collect(),
             )];
             children.push(statement(body));
-            Tree::new(format!("Function {name}"), children)
+            let suffix = return_annotation
+                .as_ref()
+                .map(|a| format!(" -> {}", a.name))
+                .unwrap_or_default();
+            Tree::new(format!("Function {name}{suffix}"), children)
         }
         Stmt::Return { value } => Tree::new("Return", value.iter().map(expression).collect()),
         Stmt::If {

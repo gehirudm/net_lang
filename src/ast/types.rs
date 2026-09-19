@@ -7,6 +7,21 @@ pub struct TypeAnnotation {
     pub span: Option<Span>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parameter {
+    pub name: String,
+    pub annotation: Option<TypeAnnotation>,
+}
+
+impl From<&str> for Parameter {
+    fn from(name: &str) -> Self {
+        Self {
+            name: name.into(),
+            annotation: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimitiveType {
     Int,

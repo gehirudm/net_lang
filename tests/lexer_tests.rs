@@ -1,5 +1,20 @@
 use netlang::lexer::{Lexer, TokenKind::*};
 #[test]
+fn return_arrow_is_distinct_from_match_arrow_and_separated_operators() {
+    let tokens = Lexer::new("-> => - > int float bool string duration bytes")
+        .unwrap()
+        .tokenize()
+        .unwrap();
+    assert_eq!(
+        tokens.iter().map(|t| t.kind).collect::<Vec<_>>(),
+        vec![
+            Arrow, FatArrow, Minus, Greater, Identifier, Identifier, Identifier, Identifier,
+            Identifier, Identifier, Eof
+        ]
+    );
+    assert_eq!(tokens[0].kind.name(), "ARROW");
+}
+#[test]
 fn loop_control_keywords_preserve_identifier_boundaries_and_positions() {
     let tokens = Lexer::new("break;\ncontinue; breaker continue_loop BREAK Continue")
         .unwrap()

@@ -43,13 +43,30 @@ impl Analyzer {
             Expr::Array(_) => Some("array"),
             Expr::Object(_) => Some("object"),
             Expr::Identifier(name) => match self.scopes.resolve(name) {
-                Some(Symbol::Variable {
-                    annotation: Some(ty),
-                }) => Some(ty.name()),
+                Some(
+                    Symbol::Variable {
+                        annotation: Some(ty),
+                    }
+                    | Symbol::Parameter {
+                        annotation: Some(ty),
+                    },
+                ) => Some(ty.name()),
                 Some(Symbol::Function { .. } | Symbol::Builtin) => Some("function"),
                 _ => None,
             },
             Expr::Assignment { value, .. } => self.known_type(value),
+            Expr::Call { callee, .. } => {
+                if let Expr::Identifier(name) = callee.unspanned()
+                    && let Some(Symbol::Function {
+                        return_type: Some(ty),
+                        ..
+                    }) = self.scopes.resolve(name)
+                {
+                    Some(ty.name())
+                } else {
+                    None
+                }
+            }
             Expr::Unary {
                 operator: UnaryOp::Not,
                 ..

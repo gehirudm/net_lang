@@ -1,6 +1,6 @@
 use super::{ParseError, Parser};
 use crate::{
-    ast::{MatchArm, Pattern, Program, Stmt, TypeAnnotation},
+    ast::{MatchArm, Parameter, Pattern, Program, Stmt, TypeAnnotation},
     lexer::TokenKind as K,
 };
 
@@ -55,20 +55,27 @@ impl Parser {
         let mut parameters = Vec::new();
         if !self.check(K::RightParen) {
             loop {
-                parameters.push(
-                    self.consume(K::Identifier, "expected parameter name")?
-                        .lexeme,
-                );
+                let name = self
+                    .consume(K::Identifier, "expected parameter name")?
+                    .lexeme;
+                let annotation = self.parse_annotation()?;
+                parameters.push(Parameter { name, annotation });
                 if !self.matches(K::Comma) || self.check(K::RightParen) {
                     break;
                 }
             }
         }
         self.consume(K::RightParen, "expected ')' after parameters")?;
+        let return_annotation = if self.matches(K::Arrow) {
+            Some(self.parse_type_name()?)
+        } else {
+            None
+        };
         let body = Box::new(self.parse_block()?);
         Ok(Stmt::Function {
             name,
             parameters,
+            return_annotation,
             body,
         })
     }
@@ -76,11 +83,14 @@ impl Parser {
         if !self.matches(K::Colon) {
             return Ok(None);
         }
-        let token = self.consume(K::Identifier, "expected type name after ':'")?;
-        Ok(Some(TypeAnnotation {
+        Ok(Some(self.parse_type_name()?))
+    }
+    fn parse_type_name(&mut self) -> Result<TypeAnnotation, ParseError> {
+        let token = self.consume(K::Identifier, "expected type name")?;
+        Ok(TypeAnnotation {
             span: self.spans.then(|| token.span()),
             name: token.lexeme,
-        }))
+        })
     }
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         if self.matches(K::Break) || self.matches(K::Continue) {

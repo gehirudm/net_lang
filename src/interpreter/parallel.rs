@@ -251,6 +251,7 @@ fn execute_worker(
         call_stack: snapshot.call_stack.clone(),
         captured_bindings: snapshot.bindings.len(),
         in_parallel_worker: true,
+        return_type: None,
     };
     let id = worker.allocate(Some(job.value), true);
     let mut env = snapshot.env.clone();

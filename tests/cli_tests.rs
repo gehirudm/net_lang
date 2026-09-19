@@ -6,6 +6,46 @@ fn cli(args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 #[test]
+fn optional_annotations_check_run_and_report_contract_locations() {
+    assert!(cli(&["check", "examples/annotations.net"]).status.success());
+    let output = cli(&["run", "examples/annotations.net"]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "8081 5000ms\ntrue\n"
+    );
+    let path = std::env::temp_dir().join(format!("netlang-contracts-{}.net", std::process::id()));
+    for (command, source, location, message) in [
+        (
+            "check",
+            "let x: Mystery = 1;",
+            ":1:8",
+            "unknown type 'Mystery'",
+        ),
+        (
+            "check",
+            "let x: int = false;",
+            ":1:14",
+            "expected int, got bool",
+        ),
+        (
+            "run",
+            "fn f(x) -> int { return x; } f(false);",
+            ":1:25",
+            "expected int, got boolean",
+        ),
+    ] {
+        std::fs::write(&path, source).unwrap();
+        let output = cli(&[command, path.to_str().unwrap()]);
+        assert!(!output.status.success());
+        let error = String::from_utf8(output.stderr).unwrap();
+        assert!(error.contains(location), "{error}");
+        assert!(error.contains(message), "{error}");
+        assert!(error.contains('^'));
+    }
+    std::fs::remove_file(path).unwrap();
+}
+#[test]
 fn tokens_and_ast_commands() {
     let tokens = cli(&["tokens", "examples/complete.net"]);
     assert!(tokens.status.success());

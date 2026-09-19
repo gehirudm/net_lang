@@ -43,7 +43,8 @@ pub enum Stmt {
     },
     Function {
         name: String,
-        parameters: Vec<String>,
+        parameters: Vec<super::Parameter>,
+        return_annotation: Option<super::TypeAnnotation>,
         body: Box<Stmt>,
     },
     Return {

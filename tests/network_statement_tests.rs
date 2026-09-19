@@ -50,6 +50,7 @@ fn success_criterion_ast() {
         name,
         parameters,
         body,
+        ..
     } = &program.statements[0]
     else {
         panic!()

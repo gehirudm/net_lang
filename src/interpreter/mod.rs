@@ -5,7 +5,7 @@ mod expression;
 mod operations;
 mod parallel;
 use crate::{
-    ast::{Expr, Pattern, PrimitiveType, Program, Stmt},
+    ast::{Expr, Parameter, Pattern, PrimitiveType, Program, Stmt},
     runtime::{FunctionId, Runtime, Value},
     semantic,
 };
@@ -80,6 +80,7 @@ pub fn execute_with_limits(
         call_stack: Vec::new(),
         captured_bindings: 0,
         in_parallel_worker: false,
+        return_type: None,
         current_span: None,
     };
     let mut env = vec![HashMap::from([("print".into(), 0)]), HashMap::new()];
@@ -123,7 +124,9 @@ struct Binding {
 #[derive(Clone)]
 struct Function {
     name: String,
-    parameters: Vec<String>,
+    parameters: Vec<Parameter>,
+    return_type: Option<PrimitiveType>,
+    return_span: Option<crate::source::Span>,
     body: Arc<Stmt>,
     closure: Environment,
 }
@@ -135,6 +138,7 @@ enum Flow {
 }
 
 struct Interpreter<'a, R: Runtime> {
+    return_type: Option<PrimitiveType>,
     current_span: Option<crate::source::Span>,
     runtime: &'a mut R,
     bindings: Vec<Binding>,
@@ -185,7 +189,10 @@ impl<R: Runtime> Interpreter<'_, R> {
             .ok_or_else(|| self.error(format!("undefined name '{name}'")))
     }
     fn check_binding_type(&self, id: usize, value: &Value) -> Result<()> {
-        if let Some(expected) = self.bindings[id].annotation {
+        self.check_value_type(self.bindings[id].annotation, value)
+    }
+    fn check_value_type(&self, expected: Option<PrimitiveType>, value: &Value) -> Result<()> {
+        if let Some(expected) = expected {
             let valid = matches!(
                 (expected, value),
                 (PrimitiveType::Int, Value::Integer(_))
@@ -246,12 +253,20 @@ impl<R: Runtime> Interpreter<'_, R> {
                 Stmt::Function {
                     name,
                     parameters,
+                    return_annotation,
                     body,
                 } => {
                     let function = FunctionId(self.functions.len());
                     self.functions.push(Function {
                         name: name.clone(),
                         parameters: parameters.clone(),
+                        return_type: return_annotation
+                            .as_ref()
+                            .and_then(|a| PrimitiveType::from_name(&a.name)),
+                        return_span: return_annotation
+                            .as_ref()
+                            .and_then(|a| a.span)
+                            .or(stmt.span()),
                         body: Arc::new(*body.clone()),
                         closure: declaration_env.clone(),
                     });
@@ -339,10 +354,17 @@ impl<R: Runtime> Interpreter<'_, R> {
             }
             Stmt::Block(_) => return self.scoped_body(stmt, env),
             Stmt::Return { value } => {
-                return Ok(Flow::Return(match value {
+                let span = value.as_ref().and_then(Expr::span).or(self.current_span);
+                let value = match value {
                     Some(expr) => self.expression(expr, env)?,
                     None => Value::Null,
-                }));
+                };
+                self.check_value_type(self.return_type, &value)
+                    .map_err(|mut error| {
+                        error.span = span;
+                        error
+                    })?;
+                return Ok(Flow::Return(value));
             }
             Stmt::If {
                 condition,
@@ -448,23 +470,42 @@ impl<R: Runtime> Interpreter<'_, R> {
                 }
                 let mut env = function.closure;
                 let mut parameters = HashMap::new();
-                for (name, value) in function.parameters.into_iter().zip(arguments) {
-                    parameters.insert(name, self.allocate(Some(value), true));
+                for (parameter, value) in function.parameters.into_iter().zip(arguments) {
+                    let annotation = parameter
+                        .annotation
+                        .as_ref()
+                        .and_then(|a| PrimitiveType::from_name(&a.name));
+                    self.check_value_type(annotation, &value)?;
+                    let id = self.allocate(Some(value), true);
+                    self.bindings[id].annotation = annotation;
+                    parameters.insert(parameter.name, id);
                 }
                 env.push(parameters);
                 self.call_stack.push(function.name);
                 // Expression nesting inside a callee is separate from its caller.
                 let depth = std::mem::replace(&mut self.expression_depth, 0);
-                let result = self.body(&function.body, &mut env);
+                let enclosing_return =
+                    std::mem::replace(&mut self.return_type, function.return_type);
+                let result = self
+                    .body(&function.body, &mut env)
+                    .and_then(|flow| match flow {
+                        Flow::Normal => {
+                            self.check_value_type(function.return_type, &Value::Null)
+                                .map_err(|mut error| {
+                                    error.span = function.return_span.or(error.span);
+                                    error
+                                })?;
+                            Ok(Value::Null)
+                        }
+                        Flow::Break | Flow::Continue => {
+                            Err(self.error("loop control cannot exit a function"))
+                        }
+                        Flow::Return(value) => Ok(value),
+                    });
+                self.return_type = enclosing_return;
                 self.expression_depth = depth;
                 self.call_stack.pop();
-                match result? {
-                    Flow::Normal => Ok(Value::Null),
-                    Flow::Break | Flow::Continue => {
-                        Err(self.error("loop control cannot exit a function"))
-                    }
-                    Flow::Return(value) => Ok(value),
-                }
+                result
             }
             value => Err(self.error(format!("cannot call {}", value.type_name()))),
         }
