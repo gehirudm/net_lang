@@ -1,5 +1,16 @@
 use netlang::lexer::{Lexer, TokenKind::*};
 #[test]
+fn type_keyword_preserves_identifier_boundaries() {
+    let tokens = Lexer::new("type User type_name Type")
+        .unwrap()
+        .tokenize()
+        .unwrap();
+    assert_eq!(
+        tokens.iter().map(|t| t.kind).collect::<Vec<_>>(),
+        vec![Type, Identifier, Identifier, Identifier, Eof]
+    );
+}
+#[test]
 fn return_arrow_is_distinct_from_match_arrow_and_separated_operators() {
     let tokens = Lexer::new("-> => - > int float bool string duration bytes")
         .unwrap()

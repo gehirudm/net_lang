@@ -6,7 +6,7 @@ mod transport;
 mod value;
 use crate::ast::{HttpMethod, Transport};
 use std::io::Write;
-pub use value::{ConnectionId, FunctionId, Value};
+pub use value::{ConnectionId, FunctionId, RecordValue, Value};
 
 /// Embedders can supply deterministic effects for tests or another runtime.
 pub trait Runtime {

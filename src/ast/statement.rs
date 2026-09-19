@@ -5,6 +5,10 @@ pub struct Program {
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
+    Type {
+        name: String,
+        fields: Vec<super::TypeField>,
+    },
     Break,
     Continue,
     Located {

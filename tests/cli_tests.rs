@@ -6,6 +6,21 @@ fn cli(args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 #[test]
+fn named_type_example_checks_and_executes_without_network_effects() {
+    assert!(cli(&["check", "examples/named_types.net"]).status.success());
+    let ast = cli(&["ast", "examples/named_types.net"]);
+    assert!(ast.status.success());
+    let text = String::from_utf8(ast.stdout).unwrap();
+    assert!(text.contains("Type User"));
+    assert!(text.contains("Construct User"));
+    let output = cli(&["run", "examples/named_types.net"]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "Alice Bob\n2 Worker\n3 Worker\n"
+    );
+}
+#[test]
 fn optional_annotations_check_run_and_report_contract_locations() {
     assert!(cli(&["check", "examples/annotations.net"]).status.success());
     let output = cli(&["run", "examples/annotations.net"]);

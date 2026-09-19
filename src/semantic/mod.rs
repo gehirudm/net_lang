@@ -5,7 +5,8 @@ mod error;
 mod scope;
 mod types;
 
-use crate::ast::{Expr, PrimitiveType, Program, Stmt};
+use crate::ast::{Expr, Program, Stmt};
+use crate::types::{ResolvedType, TypeRegistry};
 pub use error::{SemanticError, SemanticErrorKind};
 use scope::{Scopes, Symbol};
 
@@ -21,6 +22,8 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
         current_span: None,
         loops: Vec::new(),
         return_type: None,
+        types: TypeRegistry::new(program),
+        declared_types: Default::default(),
     };
     analyzer.scopes.enter();
     analyzer.statements(&program.statements);
@@ -33,7 +36,9 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
 }
 
 struct Analyzer {
-    return_type: Option<PrimitiveType>,
+    types: TypeRegistry,
+    declared_types: std::collections::HashSet<String>,
+    return_type: Option<ResolvedType>,
     loops: Vec<LoopKind>,
     current_span: Option<crate::source::Span>,
     scopes: Scopes,
@@ -147,6 +152,7 @@ impl Analyzer {
 
     fn statement(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::Type { name, fields } => self.type_declaration(name, fields),
             Stmt::Break => match self.loops.last() {
                 Some(LoopKind::Serial) => {}
                 Some(LoopKind::Parallel) => self.error(
@@ -204,7 +210,7 @@ impl Analyzer {
                     &mut self.return_type,
                     return_annotation
                         .as_ref()
-                        .and_then(|a| PrimitiveType::from_name(&a.name)),
+                        .and_then(|a| self.types.resolve(&a.name)),
                 );
                 for parameter in parameters {
                     self.declare(
@@ -213,7 +219,7 @@ impl Analyzer {
                             annotation: parameter
                                 .annotation
                                 .as_ref()
-                                .and_then(|a| PrimitiveType::from_name(&a.name)),
+                                .and_then(|a| self.types.resolve(&a.name)),
                         },
                     );
                 }
@@ -311,6 +317,7 @@ impl Analyzer {
 
     fn expression(&mut self, expr: &Expr) {
         match expr {
+            Expr::Construct { name, fields } => self.constructor(name, fields),
             Expr::Located { span, expression } => {
                 let previous = self.current_span.replace(*span);
                 self.expression(expression);
@@ -380,6 +387,13 @@ impl Analyzer {
                 self.check_parallel_assignment(target);
                 self.current_span = previous;
                 self.expression(value);
+                if matches!(
+                    target.unspanned(),
+                    Expr::Property { .. } | Expr::Index { .. }
+                ) && let Some(expected) = self.member_type(target)
+                {
+                    self.check_type(value, expected);
+                }
                 if let Expr::Identifier(name) = target.unspanned()
                     && let Some(
                         Symbol::Variable {
@@ -420,10 +434,16 @@ impl Analyzer {
                     }
                 }
             }
-            Expr::Property { object, .. } => self.expression(object),
+            Expr::Property { object, name } => {
+                self.expression(object);
+                self.check_member(object, name);
+            }
             Expr::Index { object, index } => {
                 self.expression(object);
                 self.expression(index);
+                if let Expr::String(name) = index.unspanned() {
+                    self.check_member(object, name);
+                }
             }
             Expr::Request { url, config, .. } => {
                 self.expression(url);

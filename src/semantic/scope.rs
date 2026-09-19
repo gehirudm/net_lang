@@ -3,16 +3,16 @@ use std::collections::{HashMap, hash_map::Entry};
 #[derive(Debug, Clone)]
 pub(super) enum Symbol {
     Variable {
-        annotation: Option<crate::ast::PrimitiveType>,
+        annotation: Option<crate::types::ResolvedType>,
     },
     Parameter {
-        annotation: Option<crate::ast::PrimitiveType>,
+        annotation: Option<crate::types::ResolvedType>,
     },
     LoopVariable,
     Function {
         arity: usize,
-        parameters: Vec<Option<crate::ast::PrimitiveType>>,
-        return_type: Option<crate::ast::PrimitiveType>,
+        parameters: Vec<Option<crate::types::ResolvedType>>,
+        return_type: Option<crate::types::ResolvedType>,
     },
     Builtin,
 }

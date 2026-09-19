@@ -15,6 +15,8 @@ pub enum SemanticErrorKind {
     BreakAcrossParallel,
     UnknownType,
     TypeMismatch,
+    InvalidTypeDeclaration,
+    InvalidConstructor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

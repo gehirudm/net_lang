@@ -1,0 +1,26 @@
+type User {
+    id: int,
+    name: string
+}
+
+type Team {
+    owner: User
+}
+
+fn rename(user: User, name: string) -> User {
+    user.name = name;
+    return user;
+}
+
+fn main() {
+    let team: Team = Team {
+        owner: User { id: 1, name: "Alice" }
+    };
+    let renamed: User = rename(team.owner, "Bob");
+    print(team.owner.name, renamed.name);
+
+    parallel id in [2, 3] {
+        let user: User = User { id: id, name: "Worker" };
+        print(user.id, user.name);
+    }
+}

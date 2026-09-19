@@ -10,6 +10,7 @@ use std::{
 };
 
 struct Snapshot {
+    types: crate::types::TypeRegistry,
     span: Option<crate::source::Span>,
     bindings: Vec<Binding>,
     functions: Vec<Function>,
@@ -124,6 +125,7 @@ impl<R: Runtime> Interpreter<'_, R> {
             return Ok(());
         }
         let snapshot = Arc::new(Snapshot {
+            types: self.types.clone(),
             span: self.current_span,
             bindings: self.bindings.clone(),
             functions: self.functions.clone(),
@@ -241,6 +243,7 @@ fn execute_worker(
         output_limit: limits.parallel_output_bytes,
     };
     let mut worker = Interpreter {
+        types: snapshot.types.clone(),
         current_span: snapshot.span,
         runtime: &mut runtime,
         bindings: snapshot.bindings.clone(),

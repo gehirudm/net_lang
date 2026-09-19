@@ -88,7 +88,8 @@ the full [v0.1 success-criteria program](examples/complete.net).
 ## Syntax implemented
 
 - Functions, calls, `let`, assignment, and optional return values; optional
-  primitive annotations on bindings, parameters, and function returns.
+  primitive and named-type annotations on bindings, parameters, and function returns.
+- Top-level named types and explicit construction with checked, required fields.
 - Blocks, `if` / `else if` / `else`, `while`, `for item in items`, `break`, and `continue`.
 - Integers, floats, strings, booleans, null, arrays, and objects.
 - Property access, indexing, unary `!` and `-`, arithmetic, comparisons,
@@ -212,7 +213,8 @@ fn next_port(port: int) -> int {
 }
 ```
 
-The supported names are `int`, `float`, `bool`, `string`, `duration`, and `bytes`.
+The primitive names are `int`, `float`, `bool`, `string`, `duration`, and `bytes`.
+Annotations may also name a declared type, as described below.
 These are ordinary identifiers outside annotation positions. `check` rejects
 unknown type names and provable initializer/reassignment mismatches. Dynamic
 values are checked when entering an annotated binding and on every later write,
@@ -231,10 +233,57 @@ return annotation. Missing-return path analysis is not implemented; fallthrough
 is checked at runtime. Explicit `return;` in an annotated function is a semantic
 error. Unannotated functions keep their existing behavior.
 
-Unannotated collections remain heterogeneous; collection schemas, user-defined
-types, and transport types are later work. A successful semantic check still
+Unannotated collections remain heterogeneous; collection schemas, optional types,
+and transport types are later work. A successful semantic check still
 cannot guarantee runtime success. Run [examples/annotations.net](examples/annotations.net)
 for a complete example.
+
+### Distinct named types
+
+Named types require explicit construction. A plain object with the same fields
+does not satisfy a named annotation, and two different named types remain
+incompatible even when their fields match:
+
+```netlang
+type User {
+    id: int,
+    name: string
+}
+
+fn rename(user: User, name: string) -> User {
+    user.name = name;
+    return user;
+}
+
+let user: User = User { id: 1, name: "Alice" };
+let renamed = rename(user, "Bob");
+```
+
+All fields are required and annotated with a primitive or another named type.
+Construction rejects missing, extra, duplicate, or incorrectly typed fields;
+dynamic field values are checked at runtime. Fields may be reordered and lists
+may have trailing commas. `user.name` and `user["name"]` support reads and checked
+writes, including when `user` itself is unannotated. Adding fields is not allowed.
+Records copy by value, so the example leaves `user.name` equal to `"Alice"`.
+Equality requires the same named type as well as equal field values.
+
+Type declarations are currently top-level only and are visible throughout the
+program, including before their declaration. Type names have a separate namespace
+from variable/function names; primitive and runtime category names are reserved.
+Named identity survives copying, function calls, and parallel worker snapshots.
+Runtime hosts can inspect record names and fields but cannot construct or mutate
+record internals to bypass contracts. Named values from separate executions have
+different identities.
+
+In a control-flow header, parenthesize a direct constructor, for example
+`if (Flag { active: true }).active { ... }`. Call arguments and array elements
+already delimit constructors. Request URL/address parsing also preserves existing
+configuration and block boundaries; parentheses make a constructor explicit there.
+
+Local type declarations, optional/default fields, generics, recursive required-field
+cycles, methods, and inheritance are not implemented. No wire encoding or automatic
+JSON conversion is added: named values do not yet make typed networking executable.
+See [examples/named_types.net](examples/named_types.net).
 
 ## Interpreter
 
@@ -602,7 +651,8 @@ its syntax changes, or its priority is revised.
 
 - [x] **Optional primitive annotations on `let` bindings**
 - [x] **Optional primitive function parameter and return annotations**
-- [ ] **Richer type annotations**, including user-defined response types
+- [x] **Named-type annotations on bindings, parameters, returns, and fields**
+- [ ] **Generic type annotations**, including typed request responses
 
   ```netlang
   let port: int = 8080;
@@ -612,7 +662,7 @@ its syntax changes, or its priority is revised.
   }
   ```
 
-- [ ] **User-defined types and structs**
+- [x] **User-defined types and structs** — top-level nominal types with explicit construction
 
   ```netlang
   type User {
@@ -1048,6 +1098,7 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [x] Symbol tables and lexical scope checking
 - [x] Optional primitive binding contracts with conservative static checks and runtime enforcement
 - [x] Optional primitive function contracts, including dynamic calls and returns
+- [x] Distinct named types, field validation, and checked construction/mutation
 - [ ] Richer static types and return-path analysis
 - [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
 - [ ] Protocol-state checking as an advanced semantic-analysis feature

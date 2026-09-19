@@ -8,6 +8,12 @@ pub struct TypeAnnotation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeField {
+    pub name: String,
+    pub annotation: TypeAnnotation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
     pub name: String,
     pub annotation: Option<TypeAnnotation>,

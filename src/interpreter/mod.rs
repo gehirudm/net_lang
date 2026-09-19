@@ -4,6 +4,7 @@ mod error;
 mod expression;
 mod operations;
 mod parallel;
+use crate::types::{ResolvedType, TypeRegistry};
 use crate::{
     ast::{Expr, Parameter, Pattern, PrimitiveType, Program, Stmt},
     runtime::{FunctionId, Runtime, Value},
@@ -81,6 +82,7 @@ pub fn execute_with_limits(
         captured_bindings: 0,
         in_parallel_worker: false,
         return_type: None,
+        types: TypeRegistry::new(program),
         current_span: None,
     };
     let mut env = vec![HashMap::from([("print".into(), 0)]), HashMap::new()];
@@ -117,7 +119,7 @@ pub fn execute_with_limits(
 
 #[derive(Clone)]
 struct Binding {
-    annotation: Option<PrimitiveType>,
+    annotation: Option<ResolvedType>,
     value: Option<Value>,
     mutable: bool,
 }
@@ -125,7 +127,7 @@ struct Binding {
 struct Function {
     name: String,
     parameters: Vec<Parameter>,
-    return_type: Option<PrimitiveType>,
+    return_type: Option<ResolvedType>,
     return_span: Option<crate::source::Span>,
     body: Arc<Stmt>,
     closure: Environment,
@@ -138,7 +140,8 @@ enum Flow {
 }
 
 struct Interpreter<'a, R: Runtime> {
-    return_type: Option<PrimitiveType>,
+    types: TypeRegistry,
+    return_type: Option<ResolvedType>,
     current_span: Option<crate::source::Span>,
     runtime: &'a mut R,
     bindings: Vec<Binding>,
@@ -191,21 +194,25 @@ impl<R: Runtime> Interpreter<'_, R> {
     fn check_binding_type(&self, id: usize, value: &Value) -> Result<()> {
         self.check_value_type(self.bindings[id].annotation, value)
     }
-    fn check_value_type(&self, expected: Option<PrimitiveType>, value: &Value) -> Result<()> {
+    fn check_value_type(&self, expected: Option<ResolvedType>, value: &Value) -> Result<()> {
         if let Some(expected) = expected {
-            let valid = matches!(
-                (expected, value),
-                (PrimitiveType::Int, Value::Integer(_))
-                    | (PrimitiveType::Float, Value::Float(_))
-                    | (PrimitiveType::Bool, Value::Boolean(_))
-                    | (PrimitiveType::String, Value::String(_))
-                    | (PrimitiveType::Duration, Value::Duration(_))
-                    | (PrimitiveType::Bytes, Value::Bytes(_))
-            );
+            let valid = match expected {
+                ResolvedType::Named(id) => matches!(value, Value::Record(record)
+                    if record.type_id == id && Arc::ptr_eq(&record.identity, &self.types.identity)),
+                ResolvedType::Primitive(expected) => matches!(
+                    (expected, value),
+                    (PrimitiveType::Int, Value::Integer(_))
+                        | (PrimitiveType::Float, Value::Float(_))
+                        | (PrimitiveType::Bool, Value::Boolean(_))
+                        | (PrimitiveType::String, Value::String(_))
+                        | (PrimitiveType::Duration, Value::Duration(_))
+                        | (PrimitiveType::Bytes, Value::Bytes(_))
+                ),
+            };
             if !valid {
                 return Err(self.error(format!(
                     "expected {}, got {}",
-                    expected.name(),
+                    self.types.name(expected),
                     value.type_name()
                 )));
             }
@@ -229,7 +236,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                     let id = self.allocate(None, true);
                     self.bindings[id].annotation = annotation
                         .as_ref()
-                        .and_then(|a| PrimitiveType::from_name(&a.name));
+                        .and_then(|a| self.types.resolve(&a.name));
                     Some(id)
                 }
                 Stmt::Function { name, .. } => {
@@ -262,7 +269,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                         parameters: parameters.clone(),
                         return_type: return_annotation
                             .as_ref()
-                            .and_then(|a| PrimitiveType::from_name(&a.name)),
+                            .and_then(|a| self.types.resolve(&a.name)),
                         return_span: return_annotation
                             .as_ref()
                             .and_then(|a| a.span)
@@ -339,6 +346,7 @@ impl<R: Runtime> Interpreter<'_, R> {
 
     fn statement(&mut self, stmt: &Stmt, env: &mut Environment) -> Result<Flow> {
         match stmt {
+            Stmt::Type { .. } => {}
             Stmt::Break => return Ok(Flow::Break),
             Stmt::Continue => return Ok(Flow::Continue),
             Stmt::Located { span, statement } => {
@@ -474,7 +482,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                     let annotation = parameter
                         .annotation
                         .as_ref()
-                        .and_then(|a| PrimitiveType::from_name(&a.name));
+                        .and_then(|a| self.types.resolve(&a.name));
                     self.check_value_type(annotation, &value)?;
                     let id = self.allocate(Some(value), true);
                     self.bindings[id].annotation = annotation;

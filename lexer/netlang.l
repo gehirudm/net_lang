@@ -23,6 +23,7 @@
 <COMMENT><<EOF>> { yyextra->start_line = yyextra->comment_line; yyextra->start_column = yyextra->comment_column; return NET_UNTERMINATED_COMMENT; }
 "let" return NET_LET;
 "fn" return NET_FN;
+"type" return NET_TYPE;
 "return" return NET_RETURN;
 "break" return NET_BREAK;
 "continue" return NET_CONTINUE;

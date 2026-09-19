@@ -46,6 +46,13 @@ impl fmt::Display for Program {
 }
 fn statement(stmt: &Stmt) -> Tree {
     match stmt {
+        Stmt::Type { name, fields } => Tree::new(
+            format!("Type {name}"),
+            fields
+                .iter()
+                .map(|field| Tree::leaf(format!("{}: {}", field.name, field.annotation.name)))
+                .collect(),
+        ),
         Stmt::Break => Tree::leaf("Break"),
         Stmt::Continue => Tree::leaf("Continue"),
         Stmt::Located {
@@ -157,6 +164,18 @@ fn statement(stmt: &Stmt) -> Tree {
 }
 fn expression(expr: &Expr) -> Tree {
     match expr {
+        Expr::Construct { name, fields } => Tree::new(
+            format!("Construct {name}"),
+            fields
+                .iter()
+                .map(|field| {
+                    Tree::new(
+                        format!("Field {:?}", field.key),
+                        vec![expression(&field.value)],
+                    )
+                })
+                .collect(),
+        ),
         Expr::Located {
             expression: inner, ..
         } => expression(inner),

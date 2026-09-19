@@ -21,7 +21,9 @@ fn check_tree(expr: &Expr) {
     assert!(expr.span().is_some(), "missing span: {expr:?}");
     match expr.unspanned() {
         Expr::Array(values) => values.iter().for_each(check_tree),
-        Expr::Object(fields) => fields.iter().for_each(|f| check_tree(&f.value)),
+        Expr::Object(fields) | Expr::Construct { fields, .. } => {
+            fields.iter().for_each(|f| check_tree(&f.value))
+        }
         Expr::Unary { expression, .. } => check_tree(expression),
         Expr::Binary { left, right, .. } => {
             check_tree(left);
@@ -75,6 +77,7 @@ fn every_expression_node_has_a_range_including_request_configuration() {
         "conn SEND { name: \"é\" } TO address",
         "conn RECEIVE.status",
         "(array[0]).value = (2 + 3)",
+        "Group { user: User { id: 1 } }",
     ] {
         let expr = parser(source)
             .with_spans()

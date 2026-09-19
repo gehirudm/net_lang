@@ -1,6 +1,6 @@
 use super::{ParseError, Parser};
 use crate::{
-    ast::{MatchArm, Parameter, Pattern, Program, Stmt, TypeAnnotation},
+    ast::{MatchArm, Parameter, Pattern, Program, Stmt, TypeAnnotation, TypeField},
     lexer::TokenKind as K,
 };
 
@@ -28,7 +28,28 @@ impl Parser {
         }
     }
     fn parse_declaration_inner(&mut self) -> Result<Stmt, ParseError> {
-        if self.matches(K::Fn) {
+        if self.matches(K::Type) {
+            let name = self
+                .consume(K::Identifier, "expected type declaration name")?
+                .lexeme;
+            self.consume(K::LeftBrace, "expected '{' after type name")?;
+            let mut fields = Vec::new();
+            if !self.check(K::RightBrace) {
+                loop {
+                    let name = self.consume(K::Identifier, "expected field name")?.lexeme;
+                    self.consume(K::Colon, "expected ':' after field name")?;
+                    fields.push(TypeField {
+                        name,
+                        annotation: self.parse_type_name()?,
+                    });
+                    if !self.matches(K::Comma) || self.check(K::RightBrace) {
+                        break;
+                    }
+                }
+            }
+            self.consume(K::RightBrace, "expected '}' after type fields")?;
+            Ok(Stmt::Type { name, fields })
+        } else if self.matches(K::Fn) {
             self.parse_function()
         } else if self.matches(K::Let) {
             let name = self
@@ -106,7 +127,7 @@ impl Parser {
         } else if self.matches(K::If) {
             self.parse_if()
         } else if self.matches(K::While) {
-            let condition = self.parse_expression()?;
+            let condition = self.parse_delimited_expression(false)?;
             let body = Box::new(self.parse_block()?);
             Ok(Stmt::While { condition, body })
         } else if self.matches(K::Match) {
@@ -117,7 +138,7 @@ impl Parser {
                 .consume(K::Identifier, "expected loop variable")?
                 .lexeme;
             self.consume(K::In, "expected 'in' after loop variable")?;
-            let iterable = self.parse_expression()?;
+            let iterable = self.parse_delimited_expression(false)?;
             let body = Box::new(self.parse_block()?);
             Ok(if parallel {
                 Stmt::Parallel {
@@ -147,7 +168,7 @@ impl Parser {
         }
     }
     fn parse_match(&mut self) -> Result<Stmt, ParseError> {
-        let expression = self.parse_expression()?;
+        let expression = self.parse_delimited_expression(false)?;
         self.consume(K::LeftBrace, "expected '{' before match arms")?;
         let mut arms = Vec::new();
         while !self.check(K::RightBrace) && !self.is_at_end() {
@@ -189,7 +210,7 @@ impl Parser {
     }
     // The leading 'if' has already been consumed, including for else-if.
     fn parse_if(&mut self) -> Result<Stmt, ParseError> {
-        let condition = self.parse_expression()?;
+        let condition = self.parse_delimited_expression(false)?;
         let then_branch = Box::new(self.parse_block()?);
         let else_branch = if self.matches(K::Else) {
             Some(Box::new(if self.matches(K::If) {

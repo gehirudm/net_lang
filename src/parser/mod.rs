@@ -7,6 +7,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
     spans: bool,
+    constructors: bool,
 }
 impl Parser {
     /// The token stream must contain exactly one EOF token, at its end.
@@ -30,6 +31,7 @@ impl Parser {
             tokens,
             current: 0,
             spans: false,
+            constructors: true,
         })
     }
     /// Preserve statement, expression, and pattern locations; default ASTs are bare.

@@ -27,6 +27,15 @@ impl Parser {
     pub fn parse_expression(&mut self) -> Result<Expr, ParseError> {
         self.parse_assignment()
     }
+    pub(super) fn parse_delimited_expression(
+        &mut self,
+        constructors: bool,
+    ) -> Result<Expr, ParseError> {
+        let previous = std::mem::replace(&mut self.constructors, constructors);
+        let result = self.parse_expression();
+        self.constructors = previous;
+        result
+    }
     /// Parse an expression and require the entire input to be consumed.
     pub fn parse_expression_complete(&mut self) -> Result<Expr, ParseError> {
         let expr = self.parse_expression()?;
@@ -172,7 +181,7 @@ impl Parser {
                     arguments,
                 };
             } else if self.matches(K::LeftBracket) {
-                let index = self.parse_expression()?;
+                let index = self.parse_delimited_expression(true)?;
                 self.consume(K::RightBracket, "expected ']' after index")?;
                 expr = Expr::Index {
                     object: Box::new(expr),
@@ -200,7 +209,7 @@ impl Parser {
         let mut values = Vec::new();
         if !self.check(closing) {
             loop {
-                values.push(self.parse_expression()?);
+                values.push(self.parse_delimited_expression(true)?);
                 if !self.matches(K::Comma) || self.check(closing) {
                     break;
                 }
@@ -236,7 +245,16 @@ impl Parser {
             K::True => Ok(Expr::Boolean(true)),
             K::False => Ok(Expr::Boolean(false)),
             K::Null => Ok(Expr::Null),
-            K::Identifier => Ok(Expr::Identifier(token.lexeme)),
+            K::Identifier => {
+                if self.constructors && self.matches(K::LeftBrace) {
+                    Ok(Expr::Construct {
+                        name: token.lexeme,
+                        fields: self.parse_object_fields()?,
+                    })
+                } else {
+                    Ok(Expr::Identifier(token.lexeme))
+                }
+            }
             K::Duration => {
                 let (digits, multiplier) = if let Some(n) = token.lexeme.strip_suffix("ms") {
                     (n, 1)
@@ -255,7 +273,7 @@ impl Parser {
                 Ok(Expr::Duration(value))
             }
             K::LeftParen => {
-                let expr = self.parse_expression()?;
+                let expr = self.parse_delimited_expression(true)?;
                 self.consume(K::RightParen, "expected ')' after expression")?;
                 Ok(expr)
             }
@@ -270,7 +288,10 @@ impl Parser {
         } else {
             Transport::Udp
         };
-        let address = Box::new(self.parse_or()?);
+        let previous = std::mem::replace(&mut self.constructors, false);
+        let address = self.parse_or();
+        self.constructors = previous;
+        let address = Box::new(address?);
         let protocol = if self.matches(K::Using) {
             Some(
                 self.consume(K::Identifier, "expected protocol name after 'using'")?
@@ -298,7 +319,7 @@ impl Parser {
         };
         // A URL consumes a full expression. The following object, if any,
         // belongs to this request. Parenthesize a request to operate on its result.
-        let url = Box::new(self.parse_expression()?);
+        let url = Box::new(self.parse_delimited_expression(false)?);
         let config = if self.matches(K::LeftBrace) {
             Some(Box::new(self.parse_object()?))
         } else {
@@ -313,6 +334,10 @@ impl Parser {
     // Called after the opening brace has been consumed.
     fn parse_object(&mut self) -> Result<Expr, ParseError> {
         let start = self.previous().span().start;
+        let fields = self.parse_object_fields()?;
+        Ok(self.locate_expression(Expr::Object(fields), start))
+    }
+    fn parse_object_fields(&mut self) -> Result<Vec<ObjectField>, ParseError> {
         let mut fields = Vec::new();
         if !self.check(K::RightBrace) {
             loop {
@@ -330,7 +355,7 @@ impl Parser {
                 self.consume(K::Colon, "expected ':' after object key")?;
                 fields.push(ObjectField {
                     key,
-                    value: self.parse_expression()?,
+                    value: self.parse_delimited_expression(true)?,
                 });
                 if !self.matches(K::Comma) || self.check(K::RightBrace) {
                     break;
@@ -338,7 +363,7 @@ impl Parser {
             }
         }
         self.consume(K::RightBrace, "expected '}' after object")?;
-        Ok(self.locate_expression(Expr::Object(fields), start))
+        Ok(fields)
     }
     pub(super) fn integer(token: &Token) -> Result<i64, ParseError> {
         token

@@ -45,6 +45,7 @@ impl<R: Runtime> Interpreter<'_, R> {
             if matches!(
                 left,
                 Value::Array(_)
+                    | Value::Record(_)
                     | Value::Object(_)
                     | Value::Function(_)
                     | Value::Print
@@ -54,6 +55,7 @@ impl<R: Runtime> Interpreter<'_, R> {
             ) || matches!(
                 right,
                 Value::Array(_)
+                    | Value::Record(_)
                     | Value::Object(_)
                     | Value::Function(_)
                     | Value::Print

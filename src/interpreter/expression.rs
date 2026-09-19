@@ -29,6 +29,32 @@ impl<R: Runtime> Interpreter<'_, R> {
 
     fn expression_inner(&mut self, expr: &Expr, env: &Environment) -> Result<Value> {
         Ok(match expr {
+            Expr::Construct { name, fields } => {
+                let Some(crate::types::ResolvedType::Named(id)) = self.types.resolve(name) else {
+                    return Err(self.error(format!("unknown named type '{name}'")));
+                };
+                let definition = self.types.definitions[id].1.clone();
+                let mut values = std::collections::BTreeMap::new();
+                for field in fields {
+                    let value = self.expression(&field.value, env)?;
+                    let expected = definition
+                        .iter()
+                        .find(|f| f.name == field.key)
+                        .and_then(|f| self.types.resolve(&f.annotation.name));
+                    self.check_value_type(expected, &value)
+                        .map_err(|mut error| {
+                            error.span = field.value.span().or(error.span);
+                            error
+                        })?;
+                    values.insert(field.key.clone(), value);
+                }
+                Value::Record(crate::runtime::RecordValue {
+                    identity: self.types.identity.clone(),
+                    type_id: id,
+                    name: name.clone(),
+                    fields: values,
+                })
+            }
             Expr::Located { .. } => {
                 unreachable!("expression locations are handled before evaluation")
             }
@@ -199,7 +225,8 @@ impl<R: Runtime> Interpreter<'_, R> {
                     self.bindings[id].value = Some(value.clone());
                 } else {
                     let mut root = self.read(id)?;
-                    Self::set(&mut root, &selectors, value.clone()).map_err(|m| self.error(m))?;
+                    self.set(&mut root, &selectors, value.clone())
+                        .map_err(|m| self.error(m))?;
                     self.check_binding_type(id, &root)?;
                     self.bindings[id].value = Some(root);
                 }
@@ -261,6 +288,13 @@ impl<R: Runtime> Interpreter<'_, R> {
     ) -> std::result::Result<&'a Value, String> {
         match (value, selector) {
             (
+                Value::Record(record),
+                Selector::Property(key) | Selector::Index(Value::String(key)),
+            ) => record
+                .fields
+                .get(key)
+                .ok_or_else(|| format!("type '{}' has no field '{key}'", record.name)),
+            (
                 Value::Object(fields),
                 Selector::Property(key) | Selector::Index(Value::String(key)),
             ) => fields
@@ -284,6 +318,7 @@ impl<R: Runtime> Interpreter<'_, R> {
     }
 
     fn set(
+        &self,
         root: &mut Value,
         selectors: &[Selector],
         value: Value,
@@ -293,6 +328,28 @@ impl<R: Runtime> Interpreter<'_, R> {
             return Ok(());
         };
         match (root, selector) {
+            (
+                Value::Record(record),
+                Selector::Property(key) | Selector::Index(Value::String(key)),
+            ) => {
+                if !std::sync::Arc::ptr_eq(&record.identity, &self.types.identity) {
+                    return Err("cannot mutate a named value from another execution".into());
+                }
+                let definition = &self.types.definitions[record.type_id].1;
+                let field = definition
+                    .iter()
+                    .find(|field| field.name == *key)
+                    .ok_or_else(|| format!("type '{}' has no field '{key}'", record.name))?;
+                if rest.is_empty() {
+                    self.check_value_type(self.types.resolve(&field.annotation.name), &value)
+                        .map_err(|error| error.message)?;
+                }
+                let child = record
+                    .fields
+                    .get_mut(key)
+                    .ok_or_else(|| format!("missing field '{key}'"))?;
+                self.set(child, rest, value)
+            }
             (
                 Value::Object(fields),
                 Selector::Property(key) | Selector::Index(Value::String(key)),
@@ -304,7 +361,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                     let child = fields
                         .get_mut(key)
                         .ok_or_else(|| format!("object has no field '{key}'"))?;
-                    Self::set(child, rest, value)
+                    self.set(child, rest, value)
                 }
             }
             (Value::Array(values), Selector::Index(Value::Integer(index))) => {
@@ -314,7 +371,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                 let child = values.get_mut(index).ok_or_else(|| {
                     format!("array index {index} is out of bounds (length {length})")
                 })?;
-                Self::set(child, rest, value)
+                self.set(child, rest, value)
             }
             _ => Err("invalid assignment property/index".into()),
         }

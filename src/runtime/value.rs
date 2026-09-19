@@ -1,5 +1,30 @@
 use std::{collections::BTreeMap, fmt};
 
+/// A constructed value with execution-local nominal identity. Fields are read-only
+/// to host code so mutations cannot bypass the interpreter's field contracts.
+#[derive(Debug, Clone)]
+pub struct RecordValue {
+    pub(crate) identity: std::sync::Arc<()>,
+    pub(crate) type_id: usize,
+    pub(crate) name: String,
+    pub(crate) fields: BTreeMap<String, Value>,
+}
+impl RecordValue {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn fields(&self) -> &BTreeMap<String, Value> {
+        &self.fields
+    }
+}
+impl PartialEq for RecordValue {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.identity, &other.identity)
+            && self.type_id == other.type_id
+            && self.fields == other.fields
+    }
+}
+
 /// Function handles are local to one interpreter execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionId(pub(crate) usize);
@@ -10,6 +35,7 @@ pub struct ConnectionId(pub(crate) u64);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    Record(RecordValue),
     Integer(i64),
     Float(f64),
     String(String),
@@ -26,8 +52,9 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> &str {
         match self {
+            Self::Record(record) => &record.name,
             Self::Integer(_) => "integer",
             Self::Float(_) => "float",
             Self::String(_) => "string",
@@ -46,6 +73,18 @@ impl Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Record(record) => {
+                write!(f, "{} ", record.name)?;
+                write!(f, "{{")?;
+                for (i, (key, value)) in record.fields.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{key}: ")?;
+                    nested(value, f)?;
+                }
+                write!(f, "}}")
+            }
             Self::Integer(v) => write!(f, "{v}"),
             Self::Float(v) => write!(f, "{v}"),
             Self::String(v) => f.write_str(v),

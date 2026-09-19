@@ -1,5 +1,9 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    Construct {
+        name: String,
+        fields: Vec<ObjectField>,
+    },
     Located {
         span: crate::source::Span,
         expression: Box<Expr>,
