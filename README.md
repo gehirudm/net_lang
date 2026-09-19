@@ -167,6 +167,9 @@ The first pass implements these rules:
 - Variables, parameters, and loop variables are mutable. Named function and
   built-in bindings cannot be reassigned, though they may be shadowed.
 - `return` requires an enclosing function.
+- `break` requires an enclosing serial loop; `continue` requires an enclosing
+  serial or parallel loop. Neither can target a loop outside the current function.
+  A `break` cannot cross a parallel worker boundary.
 - Calls to directly named user functions must supply the declared argument count.
   Direct calls to the byte built-ins, `close`, `accept`, and `local_address`
   require exactly one argument.
@@ -203,12 +206,19 @@ codes; runtime errors cause a failure exit.
 
 The interpreter supports literals, arithmetic, short-circuit logical operators,
 mutable bindings, arrays/objects, functions, lexical captures, recursion,
-conditionals, while/for loops, parallel iteration, match, and return. `print` writes its arguments
+conditionals, while/for loops, parallel iteration, match, return, `break`, and
+`continue`. `print` writes its arguments
 separated by spaces followed by a newline. Output already written is retained
 when a later runtime error occurs.
 
 Current runtime decisions:
 
+- `break;` exits the nearest `while` or `for` loop. `continue;` skips the rest
+  of the current iteration; a `while` loop then reevaluates its condition.
+  In a `parallel` body, `continue;` finishes only that worker iteration. Other
+  iterations still run. A nested serial loop consumes its own `break`/`continue`;
+  breaking out of a parallel loop is rejected because cancellation is not defined.
+  See [examples/loop_control.net](examples/loop_control.net).
 - Conditions and logical operators require booleans; there is no implicit
   truthiness. Integer division truncates toward zero. Arithmetic overflow,
   division by zero, and non-finite float results are errors. Mixed integer/float
@@ -600,7 +610,7 @@ its syntax changes, or its priority is revised.
   const API_URL = "https://api.example.com";
   ```
 
-- [ ] **`break` and `continue`**
+- [x] **`break` and `continue`** — parsed, checked, and executed
 
   ```netlang
   for item in items {
@@ -997,6 +1007,7 @@ These are not syntax features, but are required for Net-lang to become executabl
 - [ ] Semantic validation that a target supports `SEND` and `RECEIVE`
 - [ ] Protocol-state checking as an advanced semantic-analysis feature
 - [x] Core interpreter: values, functions, lexical scopes, control flow, and collections
+- [x] Loop control with function/worker boundary checks and per-iteration parallel `continue`
 - [x] Interpreter HTTP and parallel integration
 - [x] Interpreter integration for TCP clients and connected/unconnected UDP sockets
 - [x] Actual HTTP(S) execution through the runtime interface

@@ -258,7 +258,8 @@ fn execute_worker(
     let result = worker
         .body(body, &mut env)
         .and_then(|flow| match flow {
-            Flow::Continue => Ok(()),
+            Flow::Normal | Flow::Continue => Ok(()),
+            Flow::Break => Err(worker.error("break cannot exit a parallel iteration")),
             Flow::Return(_) => Err(worker.error("return cannot exit a parallel iteration")),
         })
         .map_err(|mut error: RuntimeError| {

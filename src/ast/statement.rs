@@ -5,6 +5,8 @@ pub struct Program {
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
+    Break,
+    Continue,
     Located {
         span: crate::source::Span,
         statement: Box<Stmt>,

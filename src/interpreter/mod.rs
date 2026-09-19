@@ -125,6 +125,8 @@ struct Function {
     closure: Environment,
 }
 enum Flow {
+    Normal,
+    Break,
     Continue,
     Return(Value),
 }
@@ -234,18 +236,18 @@ impl<R: Runtime> Interpreter<'_, R> {
                     let id = slot.unwrap();
                     self.bindings[id].value = Some(value);
                     env.last_mut().unwrap().insert(name.clone(), id);
-                    Ok(Flow::Continue)
+                    Ok(Flow::Normal)
                 } else {
                     self.statement(stmt.unspanned(), env)
                 }
             })();
             self.current_span = previous_span;
             let flow = result?;
-            if let Flow::Return(_) = flow {
+            if !matches!(flow, Flow::Normal) {
                 return Ok(flow);
             }
         }
-        Ok(Flow::Continue)
+        Ok(Flow::Normal)
     }
 
     fn body(&mut self, body: &Stmt, env: &mut Environment) -> Result<Flow> {
@@ -283,6 +285,8 @@ impl<R: Runtime> Interpreter<'_, R> {
 
     fn statement(&mut self, stmt: &Stmt, env: &mut Environment) -> Result<Flow> {
         match stmt {
+            Stmt::Break => return Ok(Flow::Break),
+            Stmt::Continue => return Ok(Flow::Continue),
             Stmt::Located { span, statement } => {
                 let previous_span = self.current_span.replace(*span);
                 let result = self.statement(statement, env);
@@ -317,8 +321,10 @@ impl<R: Runtime> Interpreter<'_, R> {
                 if !self.condition(condition, env)? {
                     break;
                 }
-                if let flow @ Flow::Return(_) = self.scoped_body(body, env)? {
-                    return Ok(flow);
+                match self.scoped_body(body, env)? {
+                    Flow::Break => break,
+                    flow @ Flow::Return(_) => return Ok(flow),
+                    Flow::Normal | Flow::Continue => {}
                 }
             },
             Stmt::For {
@@ -335,8 +341,10 @@ impl<R: Runtime> Interpreter<'_, R> {
                     let id = self.allocate(Some(value), true);
                     let mut child = env.clone();
                     child.push(HashMap::from([(variable.clone(), id)]));
-                    if let flow @ Flow::Return(_) = self.body(body, &mut child)? {
-                        return Ok(flow);
+                    match self.body(body, &mut child)? {
+                        Flow::Break => break,
+                        flow @ Flow::Return(_) => return Ok(flow),
+                        Flow::Normal | Flow::Continue => {}
                     }
                 }
             }
@@ -363,7 +371,7 @@ impl<R: Runtime> Interpreter<'_, R> {
                 self.parallel(variable, iterable, body, env)?;
             }
         }
-        Ok(Flow::Continue)
+        Ok(Flow::Normal)
     }
 
     fn call(&mut self, callee: Value, arguments: Vec<Value>) -> Result<Value> {
@@ -412,7 +420,10 @@ impl<R: Runtime> Interpreter<'_, R> {
                 self.expression_depth = depth;
                 self.call_stack.pop();
                 match result? {
-                    Flow::Continue => Ok(Value::Null),
+                    Flow::Normal => Ok(Value::Null),
+                    Flow::Break | Flow::Continue => {
+                        Err(self.error("loop control cannot exit a function"))
+                    }
                     Flow::Return(value) => Ok(value),
                 }
             }

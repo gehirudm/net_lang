@@ -24,6 +24,8 @@
 "let" return NET_LET;
 "fn" return NET_FN;
 "return" return NET_RETURN;
+"break" return NET_BREAK;
+"continue" return NET_CONTINUE;
 "if" return NET_IF;
 "else" return NET_ELSE;
 "while" return NET_WHILE;

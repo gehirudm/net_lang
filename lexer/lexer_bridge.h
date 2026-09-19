@@ -60,6 +60,8 @@ typedef enum {
     NET_RECEIVE = 54,
     NET_TO = 55,
     NET_USING = 56,
+    NET_BREAK = 57,
+    NET_CONTINUE = 58,
     NET_UNEXPECTED_CHARACTER = -1,
     NET_UNTERMINATED_COMMENT = -2,
     NET_INVALID_ESCAPE = -3,

@@ -46,6 +46,8 @@ impl fmt::Display for Program {
 }
 fn statement(stmt: &Stmt) -> Tree {
     match stmt {
+        Stmt::Break => Tree::leaf("Break"),
+        Stmt::Continue => Tree::leaf("Continue"),
         Stmt::Located {
             statement: inner, ..
         } => statement(inner),

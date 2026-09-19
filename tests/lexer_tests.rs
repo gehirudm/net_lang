@@ -1,5 +1,22 @@
 use netlang::lexer::{Lexer, TokenKind::*};
 #[test]
+fn loop_control_keywords_preserve_identifier_boundaries_and_positions() {
+    let tokens = Lexer::new("break;\ncontinue; breaker continue_loop BREAK Continue")
+        .unwrap()
+        .tokenize()
+        .unwrap();
+    assert_eq!(
+        tokens.iter().map(|token| token.kind).collect::<Vec<_>>(),
+        vec![
+            Break, Semicolon, Continue, Semicolon, Identifier, Identifier, Identifier, Identifier,
+            Eof
+        ]
+    );
+    assert_eq!((tokens[2].line, tokens[2].column), (2, 1));
+    assert_eq!(tokens[0].kind.name(), "BREAK");
+    assert_eq!(tokens[2].kind.name(), "CONTINUE");
+}
+#[test]
 fn literals_comments_and_positions() {
     let tokens = Lexer::new("// hi\nlet x = [42, 3.14, 100ms, 5s, 2m, \"a\\n\\t\\r\\\"\\\\\", true, false, null]; /* hi\n */").unwrap().tokenize().unwrap();
     assert_eq!(

@@ -18,6 +18,7 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
         errors: Vec::new(),
         parallel_boundaries: Vec::new(),
         current_span: None,
+        loops: Vec::new(),
     };
     analyzer.scopes.enter();
     analyzer.statements(&program.statements);
@@ -30,6 +31,7 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
 }
 
 struct Analyzer {
+    loops: Vec<LoopKind>,
     current_span: Option<crate::source::Span>,
     scopes: Scopes,
     function_depth: usize,
@@ -37,6 +39,12 @@ struct Analyzer {
     errors: Vec<SemanticError>,
     // Scope depth and enclosing function depth at each worker boundary.
     parallel_boundaries: Vec<(usize, usize)>,
+}
+
+#[derive(Clone, Copy)]
+enum LoopKind {
+    Serial,
+    Parallel,
 }
 
 impl Analyzer {
@@ -124,6 +132,25 @@ impl Analyzer {
 
     fn statement(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::Break => match self.loops.last() {
+                Some(LoopKind::Serial) => {}
+                Some(LoopKind::Parallel) => self.error(
+                    SemanticErrorKind::BreakAcrossParallel,
+                    "break cannot exit a parallel iteration; use continue to finish this iteration",
+                ),
+                None => self.error(
+                    SemanticErrorKind::BreakOutsideLoop,
+                    "break is only allowed inside a serial loop",
+                ),
+            },
+            Stmt::Continue => {
+                if self.loops.is_empty() {
+                    self.error(
+                        SemanticErrorKind::ContinueOutsideLoop,
+                        "continue is only allowed inside a loop",
+                    );
+                }
+            }
             Stmt::Located { span, statement } => {
                 let previous_span = self.current_span.replace(*span);
                 self.statement(statement);
@@ -144,10 +171,13 @@ impl Analyzer {
                 self.context.push(format!("function '{name}'"));
                 self.scopes.enter();
                 self.function_depth += 1;
+                // A function cannot transfer control to a caller's loop.
+                let enclosing_loops = std::mem::take(&mut self.loops);
                 for parameter in parameters {
                     self.declare(parameter, Symbol::Parameter);
                 }
                 self.body_in_current_scope(body);
+                self.loops = enclosing_loops;
                 self.function_depth -= 1;
                 self.scopes.leave();
                 self.context.pop();
@@ -183,7 +213,9 @@ impl Analyzer {
             }
             Stmt::While { condition, body } => {
                 self.expression(condition);
+                self.loops.push(LoopKind::Serial);
                 self.scoped_body("while body", body);
+                self.loops.pop();
             }
             Stmt::For {
                 variable,
@@ -204,6 +236,11 @@ impl Analyzer {
                 };
                 self.context.push(format!("{keyword} '{variable}'"));
                 let parallel = matches!(stmt, Stmt::Parallel { .. });
+                self.loops.push(if parallel {
+                    LoopKind::Parallel
+                } else {
+                    LoopKind::Serial
+                });
                 if parallel {
                     self.parallel_boundaries
                         .push((self.scopes.depth(), self.function_depth));
@@ -212,6 +249,7 @@ impl Analyzer {
                 self.declare(variable, Symbol::LoopVariable);
                 self.body_in_current_scope(body);
                 self.scopes.leave();
+                self.loops.pop();
                 if parallel {
                     self.parallel_boundaries.pop();
                 }

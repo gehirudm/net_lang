@@ -68,7 +68,15 @@ impl Parser {
         })
     }
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
-        if self.check(K::LeftBrace) {
+        if self.matches(K::Break) || self.matches(K::Continue) {
+            let is_break = self.previous().kind == K::Break;
+            self.consume(K::Semicolon, "expected ';' after loop control statement")?;
+            Ok(if is_break {
+                Stmt::Break
+            } else {
+                Stmt::Continue
+            })
+        } else if self.check(K::LeftBrace) {
             self.parse_block()
         } else if self.matches(K::If) {
             self.parse_if()

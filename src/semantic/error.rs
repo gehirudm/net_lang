@@ -10,6 +10,9 @@ pub enum SemanticErrorKind {
     ArgumentCount,
     CapturedAssignment,
     ReturnAcrossParallel,
+    BreakOutsideLoop,
+    ContinueOutsideLoop,
+    BreakAcrossParallel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
