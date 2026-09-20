@@ -55,15 +55,18 @@ are in [examples/](examples/).
 ## Documentation
 
 - [Roadmap](ROADMAP.md) — verified milestones and upcoming work.
-- [Language and compiler design](docs-internal/LANGUAGE_DESIGN.md) — syntax,
-  runtime behavior, architecture, and clearly labeled proposals.
-- Documentation website — planned; not published yet.
+- [Documentation website](docs/README.md) — local preview and contribution guide;
+  public guides live in [docs/src/content/docs/](docs/src/content/docs/).
+- [Language and compiler design](docs-internal/LANGUAGE_DESIGN.md) — preserved
+  technical reference and design history.
+- GitHub Pages publication is configured; the first hosted deployment is pending.
 
 ## Development Status
 
 The frontend, initial semantic analyzer, and interpreter are working. Net-lang is
 an experimental personal project; its language and runtime APIs are still evolving.
-The next milestones are the documentation website, VS Code extension, and language
-server. IR, native compilation, and cross-compilation remain future work.
+The documentation website is built and locally verified; publishing it completes
+the current milestone. Next are the VS Code extension and language server.
+IR, native compilation, and cross-compilation remain future work.
 
 See [ROADMAP.md](ROADMAP.md) for detailed scope, limitations, and acceptance criteria.

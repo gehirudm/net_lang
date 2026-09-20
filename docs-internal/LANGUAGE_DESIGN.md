@@ -1,8 +1,10 @@
 # Net-lang Language and Compiler Design
 
-This temporary technical reference preserves the former README's language and
-compiler documentation for later migration to an Astro Starlight documentation
-website. The website is not implemented yet.
+This historical technical reference preserves the former README's language and
+compiler documentation. Its material has been organized into the
+[public documentation guides](../docs/src/content/docs/), with build and preview
+instructions in [docs/README.md](../docs/README.md). Maintain those guides for new
+changes; this preserved reference records the documentation-reorganization milestone.
 
 See the [landing page](../README.md) for a quick start and the
 [roadmap](../ROADMAP.md) for milestone status and acceptance criteria.

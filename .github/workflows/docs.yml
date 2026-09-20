@@ -1,0 +1,94 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    paths: &docs-paths
+      - 'docs/**'
+      - 'syntax/**'
+      - 'ROADMAP.md'
+      - '.github/workflows/docs.yml'
+      - 'src/**'
+      - 'lexer/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'build.rs'
+      - 'examples/**'
+  pull_request:
+    paths: *docs-paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Check and build documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Install documentation dependencies
+        run: npm ci --prefix docs
+      - name: Check content and grammar
+        run: |
+          npm run check --prefix docs
+          npm test --prefix docs
+      - name: Install compiler build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flex build-essential cmake pkg-config
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Verify Net-lang examples
+        run: |
+          cargo build --locked
+          npm run examples --prefix docs
+      - name: Build and verify website
+        run: |
+          npm run build --prefix docs
+          npm run verify --prefix docs
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.repository == 'gehirudm/net_lang'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: docs/dist
+
+  deploy:
+    name: Deploy GitHub Pages
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.repository == 'gehirudm/net_lang'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b3c0c03e # v5
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

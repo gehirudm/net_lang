@@ -124,7 +124,7 @@ Evidence: [tests](tests/), [CI](.github/workflows/ci.yml), [Dependabot](.github/
 
 ## Current Milestone
 
-### Documentation reorganization and verified roadmap
+### Documentation reorganization — completed handoff
 
 - [x] Concise README with verified quick start and network-oriented example.
 - [x] Separate roadmap for completed, partial, upcoming, and long-term work.
@@ -134,25 +134,42 @@ Evidence: [tests](tests/), [CI](.github/workflows/ci.yml), [Dependabot](.github/
 
 **Acceptance:** the three documents have distinct purposes, technical content and
 unfinished TODOs remain available, examples are verified, and language behavior is
-unchanged. This handoff is complete. Milestone 6 is next and has not started; no
-website, extension, or language server is created by this milestone.
+unchanged. This handoff is complete.
+
+### Milestone 6 — Documentation Website: publication pending
+
+- [x] Website, public guides, shared highlighting grammar, and generated LLM exports.
+- [x] Local content, example, link, and browser checks.
+- [x] Dedicated documentation validation/deployment workflow.
+- [ ] First verified GitHub Pages deployment.
+
+The implementation is ready locally. Publishing requires pushing the commits,
+selecting GitHub Actions as the repository's Pages source, and verifying a
+successful hosted deployment. The website milestone remains open until then;
+the VS Code extension is the next development milestone.
 
 ## Upcoming Milestones
 
 ### Milestone 6 — Documentation Website
 
-- [ ] Astro Starlight website inside `docs/`.
-- [ ] Getting Started, installation, and CLI reference.
-- [ ] Language syntax reference distinguishing implemented behavior from proposals.
-- [ ] HTTP, TCP, UDP, and SEND/RECEIVE documentation.
-- [ ] Runtime/standard-library reference and compiler architecture documentation.
-- [ ] Working Net-lang code-block highlighting using a reusable TextMate grammar.
-- [ ] LLM-friendly `llms.txt`, consolidated `llms-full.txt`, and machine-readable Markdown.
-- [ ] GitHub Pages deployment and dedicated documentation CI/deployment workflow.
+- [x] Astro Starlight website inside `docs/`.
+- [x] Getting Started, installation, and CLI reference.
+- [x] Language syntax reference distinguishing implemented behavior from proposals.
+- [x] HTTP, TCP, UDP, and SEND/RECEIVE documentation.
+- [x] Runtime/built-in reference and compiler architecture documentation; broader standard library remains future work.
+- [x] Working Net-lang code-block highlighting using a reusable TextMate grammar.
+- [x] LLM-friendly `llms.txt`, consolidated `llms-full.txt`, and machine-readable Markdown.
+- [x] Dedicated documentation CI/deployment workflow, with local workflow lint passing.
+- [ ] Verified GitHub Pages deployment (workflow configured; no hosted run verified yet).
 
 **Acceptance:** the site builds, links/examples are checked, current syntax is
 highlighted, exports are generated, and deployment is verified. Organize the
 internal reference into public docs without losing proposals.
+
+Evidence: [website development guide](docs/README.md), [public guides](docs/src/content/docs/),
+[shared grammar](syntax/netlang.tmLanguage.json), [validation scripts](docs/scripts/),
+and [documentation workflow](.github/workflows/docs.yml). Native compiler/runtime
+behavior is unchanged by this milestone.
 
 ### Milestone 7 — VS Code Extension
 
