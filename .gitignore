@@ -4,3 +4,12 @@
 
 # Local milestone notes; intentionally not part of repository history.
 /devlogs/
+
+# Documentation dependencies and generated output.
+/docs/node_modules/
+/docs/.astro/
+/docs/dist/
+/docs/public/llms.txt
+/docs/public/llms-full.txt
+/docs/public/markdown/
+/docs/src/content/docs/project/roadmap.md
